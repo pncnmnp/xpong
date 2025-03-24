@@ -1,8 +1,74 @@
+import ast
 from datetime import datetime
 import random
 import math
+import os
+
 import pandas as pd
 from scipy.stats import truncnorm
+from openai import OpenAI
+from dotenv import load_dotenv, find_dotenv
+
+env_file = find_dotenv(os.path.join(os.getcwd(), ".env"))
+load_dotenv(env_file)
+
+
+class GPTClient:
+    def __init__(self, api_key, model="gpt-4o-mini"):
+        self.model = model
+        self.client = OpenAI(api_key=api_key)
+
+    def chat(self, messages, temperature=0.7):
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model, messages=messages, temperature=temperature
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            raise ValueError(f"Failed to generate chat response: {e}")
+
+
+class GPTPrompts:
+    def __init__(self):
+        api_key = os.getenv("OPENAI_API_KEY")
+        self.gpt_client = GPTClient(api_key)
+
+    def generate_player_info(self):
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a precise and structured data generator. "
+                    "You always return clean, raw JSON. Do not include any explanations, "
+                    "markdown formatting, or code block symbols like ```."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Generate exactly 64 rows of fictional person data. "
+                    "Each row should be a JSON array (not an object) containing exactly 4 values: "
+                    "[autoincremented_id, full_name, country, date_of_birth]. "
+                    "The date of birth should be a string in 'YYYY-MM-DD' format, "
+                    "and ages should be between 18 and 40 as of the year 2025. "
+                    "Ensure names are culturally consistent with their country. "
+                    "Not all countries need to be represented; it's okay if some repeat. "
+                    "Return only a single raw JSON array of arrays. "
+                    "Do not include any commentary, preamble, or markdown formatting like triple backticks."
+                ),
+            },
+        ]
+        chat_response = self.gpt_client.chat(messages)
+        chat_response = ast.literal_eval(chat_response)
+        player_info = {}
+        for player in chat_response:
+            player_id, full_name, country, dob = player
+            player_info[player_id] = {
+                "full_name": full_name,
+                "country": country,
+                "dob": dob,
+            }
+        return player_info
 
 
 class GameStats:
@@ -34,6 +100,10 @@ class GameStats:
         self.player_stats = pd.DataFrame(
             columns=[
                 "player_id",
+                "name",
+                "country",
+                "dob",
+                "style",
                 "player_elo",
                 "total_games",
                 "win_rate",
@@ -176,8 +246,13 @@ class GameStats:
             player_elo_df["ELO Rating"].max() - player_elo_df["ELO Rating"].min(),
         )
 
-    def player_statistics(self, player_ids):
+    def player_statistics(self, player_ids, player_info):
         for player_id in player_ids:
+            name = player_info[player_id]["full_name"]
+            country = player_info[player_id]["country"]
+            dob = player_info[player_id]["dob"]
+            style = "Right Hand" if random.random() > 0.3 else "Left Hand"
+
             player_stats = self.game_stats[self.game_stats["player_id"] == player_id]
             total_games = len(player_stats)
             total_wins = len(player_stats[player_stats["result"] == "W"])
@@ -208,6 +283,10 @@ class GameStats:
                     max_lose_streak = max(max_lose_streak, lose_streak)
             self.player_stats.loc[len(self.player_stats)] = [
                 player_id,
+                name,
+                country,
+                dob,
+                style,
                 self.player_elo[player_id],
                 total_games,
                 win_rate,
@@ -223,8 +302,8 @@ class GameStats:
             ]
 
     def head_to_head_statistics(self, player_id, opponent_id):
-        player_stats = self.game_stats[self.game_stats["player_id"] == player_id]
-        head_to_head = player_stats[player_stats["opponent_id"] == opponent_id]
+        player_games = self.game_stats[self.game_stats["player_id"] == player_id]
+        head_to_head = player_games[player_games["opponent_id"] == opponent_id]
         total_games = len(head_to_head)
         total_wins = len(head_to_head[head_to_head["result"] == "W"])
         win_rate = total_wins / total_games
@@ -243,9 +322,12 @@ class GameStats:
 
 if __name__ == "__main__":
     simul = GameStats()
+    gpt_prompts = GPTPrompts()
+    num_players_per_tournament = 64
 
-    player_ids = list(range(1, 65))
-    player_rankings = list(range(1, 65))
+    player_ids = list(range(1, num_players_per_tournament + 1))
+    player_rankings = list(range(1, num_players_per_tournament + 1))
+    player_info = gpt_prompts.generate_player_info()
     random.shuffle(player_rankings)
 
     simul.assign_init_elo(player_ids, player_rankings)
@@ -257,5 +339,5 @@ if __name__ == "__main__":
         tournament_year += 1
 
     sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
-    simul.player_statistics(player_ids)
+    simul.player_statistics(player_ids, player_info)
     simul.player_stats.to_csv("player_stats.csv", index=False)
