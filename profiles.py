@@ -222,6 +222,24 @@ class GameStats:
                 tournaments_runner_up,
             ]
 
+    def head_to_head_statistics(self, player_id, opponent_id):
+        player_stats = self.game_stats[self.game_stats["player_id"] == player_id]
+        head_to_head = player_stats[player_stats["opponent_id"] == opponent_id]
+        total_games = len(head_to_head)
+        total_wins = len(head_to_head[head_to_head["result"] == "W"])
+        win_rate = total_wins / total_games
+        avg_points_scored = round(head_to_head["points_scored"].mean(), 2)
+        avg_points_allowed = round(head_to_head["points_allowed"].mean(), 2)
+        return (
+            player_id,
+            opponent_id,
+            total_games,
+            win_rate,
+            avg_points_scored,
+            avg_points_allowed,
+            head_to_head["result"].values,
+        )
+
 
 if __name__ == "__main__":
     simul = GameStats()
