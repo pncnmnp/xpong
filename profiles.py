@@ -12,7 +12,21 @@ class GameStats:
         # the points allowed by the player, the fastest ball speed,
         # the average ball speed, the number of aces, the number of rallies,
         # longest rally length, and the average rally length.
-        self.game_stats = []
+        self.game_stats = pd.DataFrame(
+            columns=[
+                "player_id",
+                "opponent_id",
+                "match_id",
+                "date",
+                "tournament_id",
+                "result",
+                "points_scored",
+                "points_allowed",
+            ]
+        )
+        self.tournament_stats = pd.DataFrame(
+            columns=["winner_id", "runner_up_id", "tournament_id", "match_id"]
+        )
         self.player_elo = {}
 
     def tournament_pairing(self, player_ids):
@@ -62,38 +76,39 @@ class GameStats:
                 winner_points = 21
                 loser_points = random.randint(0, winner_points - 1)
 
-                self.game_stats.append(
-                    {
-                        "player_id": winner,
-                        "opponent_id": loser,
-                        "match_id": match_id_counter,
-                        "date": datetime.now(),
-                        "tournament_id": tournament_id,
-                        "result": "W",
-                        "points_scored": winner_points,
-                        "points_allowed": loser_points,
-                    },
-                )
+                self.game_stats.loc[len(self.game_stats)] = {
+                    "player_id": winner,
+                    "opponent_id": loser,
+                    "match_id": match_id_counter,
+                    "date": datetime.now(),
+                    "tournament_id": tournament_id,
+                    "result": "W",
+                    "points_scored": winner_points,
+                    "points_allowed": loser_points,
+                }
 
-                self.game_stats.append(
-                    {
-                        "player_id": loser,
-                        "opponent_id": winner,
-                        "match_id": match_id_counter,
-                        "date": datetime.now(),
-                        "tournament_id": tournament_id,
-                        "result": "L",
-                        "points_scored": loser_points,
-                        "points_allowed": winner_points,
-                    },
-                )
+                self.game_stats.loc[len(self.game_stats)] = {
+                    "player_id": loser,
+                    "opponent_id": winner,
+                    "match_id": match_id_counter,
+                    "date": datetime.now(),
+                    "tournament_id": tournament_id,
+                    "result": "L",
+                    "points_scored": loser_points,
+                    "points_allowed": winner_points,
+                }
 
                 match_id_counter += 1
                 next_round_players.append(winner)
 
+            if len(next_round_players) == 2:
+                self.tournament_stats.loc[len(self.tournament_stats)] = {
+                    "winner_id": next_round_players[0],
+                    "runner_up_id": next_round_players[1],
+                    "tournament_id": tournament_id,
+                    "match_id": match_id_counter - 1,
+                }
             round_players = next_round_players
-
-        print("Tournament complete! Winner is:", round_players[0])
 
     def assign_init_elo(self, player_ids, player_rankings):
         upper_bound = 2700
@@ -104,26 +119,29 @@ class GameStats:
                 delta * (player_rankings[player_id - 1] - 1)
             )
 
+    def show_top_bottom_elo_stats(self):
+        player_elo_df = pd.DataFrame(
+            sorted_players, columns=["Player ID", "ELO Rating"]
+        )
+        print(player_elo_df.head(5))
+        print(player_elo_df.tail(5))
+        print(
+            "Delta is: ",
+            player_elo_df["ELO Rating"].max() - player_elo_df["ELO Rating"].min(),
+        )
+
 
 if __name__ == "__main__":
-    game_stats_obj = GameStats()
+    simul = GameStats()
 
     player_ids = list(range(1, 65))
     player_rankings = list(range(1, 65))
     random.shuffle(player_rankings)
 
-    game_stats_obj.assign_init_elo(player_ids, player_rankings)
+    simul.assign_init_elo(player_ids, player_rankings)
 
     for tournament_id in range(1, 15):
-        game_stats_obj.simulate_tournament(player_ids, tournament_id)
+        simul.simulate_tournament(player_ids, tournament_id)
 
-    sorted_players = sorted(
-        game_stats_obj.player_elo.items(), key=lambda x: x[1], reverse=True
-    )
-    player_elo_df = pd.DataFrame(sorted_players, columns=["Player ID", "ELO Rating"])
-    print(player_elo_df.head(10))
-    print(player_elo_df.tail(10))
-    print(
-        "Delta is: ",
-        player_elo_df["ELO Rating"].max() - player_elo_df["ELO Rating"].min(),
-    )
+    sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
+    print(simul.tournament_stats.head(15))
