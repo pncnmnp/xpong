@@ -42,20 +42,27 @@ class GameStats:
         pairings = list(zip(elite_tier, challenger_tier))
         return pairings
 
-    def simulate_tournament(self, player_ids, tournament_id):
+    def simulate_tournament(self, player_ids, tournament_id, tournament_year):
         tournament_pairings = [
             player for pair in self.tournament_pairing(player_ids) for player in pair
         ]
         round_players = tournament_pairings[:]
         match_id_counter = 1
 
+        # Tournament start date
+        match_date = datetime(tournament_year, 7, 1)
+
         while len(round_players) > 1:
             next_round_players = []
+            match_date += pd.DateOffset(days=1)
 
             for i in range(0, len(round_players), 2):
                 player1, player2 = round_players[i], round_players[i + 1]
                 p1_rank, p2_rank = self.player_elo[player1], self.player_elo[player2]
                 rank_diff = p2_rank - p1_rank
+
+                if match_id_counter % 8 == 0:
+                    match_date += pd.DateOffset(days=1)
 
                 p1_win_probability = 1 / (1 + 10 ** (rank_diff / 400))
                 p2_win_probability = 1 - p1_win_probability
@@ -80,7 +87,7 @@ class GameStats:
                     "player_id": winner,
                     "opponent_id": loser,
                     "match_id": match_id_counter,
-                    "date": datetime.now(),
+                    "date": match_date,
                     "tournament_id": tournament_id,
                     "result": "W",
                     "points_scored": winner_points,
@@ -91,7 +98,7 @@ class GameStats:
                     "player_id": loser,
                     "opponent_id": winner,
                     "match_id": match_id_counter,
-                    "date": datetime.now(),
+                    "date": match_date,
                     "tournament_id": tournament_id,
                     "result": "L",
                     "points_scored": loser_points,
@@ -140,8 +147,12 @@ if __name__ == "__main__":
 
     simul.assign_init_elo(player_ids, player_rankings)
 
-    for tournament_id in range(1, 15):
-        simul.simulate_tournament(player_ids, tournament_id)
+    number_of_tournaments = 15
+    tournament_year = 2025 - number_of_tournaments
+    for tournament_id in range(0, number_of_tournaments):
+        simul.simulate_tournament(player_ids, tournament_id, tournament_year)
+        tournament_year += 1
 
     sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
     print(simul.tournament_stats.head(15))
+    simul.game_stats.to_csv("game_stats.csv", index=False)
