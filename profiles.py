@@ -12,8 +12,7 @@ class GameStats:
         # date, tournament_id, result, and game statistics.
         # The game statistics include the points scored by the player,
         # the points allowed by the player, the fastest ball speed,
-        # the average ball speed, the number of aces, the number of rallies,
-        # longest rally length, and the average rally length.
+        # and the number of aces
         self.game_stats = pd.DataFrame(
             columns=[
                 "player_id",
@@ -149,7 +148,7 @@ class GameStats:
                 delta * (player_rankings[player_id - 1] - 1)
             )
 
-    def show_top_bottom_elo_stats(self):
+    def show_top_bottom_elo_stats(self, sorted_players):
         player_elo_df = pd.DataFrame(
             sorted_players, columns=["Player ID", "ELO Rating"]
         )
@@ -159,6 +158,49 @@ class GameStats:
             "Delta is: ",
             player_elo_df["ELO Rating"].max() - player_elo_df["ELO Rating"].min(),
         )
+
+    def player_statistics(self, player_id):
+        player_stats = self.game_stats[self.game_stats["player_id"] == player_id]
+        total_games = len(player_stats)
+        total_wins = len(player_stats[player_stats["result"] == "W"])
+        win_rate = total_wins / total_games
+        avg_points_scored = round(player_stats["points_scored"].mean(), 2)
+        avg_points_allowed = round(player_stats["points_allowed"].mean(), 2)
+        points_diff = round(avg_points_scored - avg_points_allowed, 2)
+        fastest_ball_speed = player_stats["fastest_ball_speed"].max()
+        avg_aces = round(player_stats["aces"].mean(), 2)
+        tournaments_won = len(
+            self.tournament_stats[self.tournament_stats["winner_id"] == player_id]
+        )
+        tournaments_runner_up = len(
+            self.tournament_stats[self.tournament_stats["runner_up_id"] == player_id]
+        )
+        win_streak, lose_streak = 0, 0
+        max_win_streak, max_lose_streak = 0, 0
+        for result in player_stats["result"]:
+            if result == "W":
+                win_streak += 1
+                lose_streak = 0
+                max_win_streak = max(max_win_streak, win_streak)
+            else:
+                lose_streak += 1
+                win_streak = 0
+                max_lose_streak = max(max_lose_streak, lose_streak)
+        return {
+            "Player ID": player_id,
+            "Player ELO": self.player_elo[player_id],
+            "Total Games": total_games,
+            "Win Rate": win_rate,
+            "Average Points Scored": avg_points_scored,
+            "Average Points Allowed": avg_points_allowed,
+            "Points Differential": points_diff,
+            "Longest Winning Streak": max_win_streak,
+            "Longest Losing Streak": max_lose_streak,
+            "Fastest Ball Speed": fastest_ball_speed,
+            "Average Number of Aces": avg_aces,
+            "Tournaments Won": tournaments_won,
+            "Tournaments Runner-up": tournaments_runner_up,
+        }
 
 
 if __name__ == "__main__":
@@ -179,3 +221,5 @@ if __name__ == "__main__":
     sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
     print(simul.tournament_stats.head(15))
     simul.game_stats.to_csv("game_stats.csv", index=False)
+    print(simul.player_statistics(sorted_players[0][0]))
+    print(simul.player_statistics(sorted_players[63][0]))
