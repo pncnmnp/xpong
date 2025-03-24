@@ -1,6 +1,8 @@
 from datetime import datetime
 import random
+import math
 import pandas as pd
+from scipy.stats import truncnorm
 
 
 class GameStats:
@@ -22,6 +24,8 @@ class GameStats:
                 "result",
                 "points_scored",
                 "points_allowed",
+                "fastest_ball_speed",
+                "aces",
             ]
         )
         self.tournament_stats = pd.DataFrame(
@@ -41,6 +45,21 @@ class GameStats:
         random.shuffle(challenger_tier)
         pairings = list(zip(elite_tier, challenger_tier))
         return pairings
+
+    def simulate_aces(self, num_points):
+        threshold = num_points // 3
+        if random.random() < 0.9:
+            return random.randint(0, threshold)
+        else:
+            return math.floor(random.random() * num_points)
+
+    def simulate_fastest_ball_speed(self):
+        lower, upper = 130, 160
+        mu = (lower + upper) / 2
+        sigma = (upper - lower) / 6
+        a, b = (lower - mu) / sigma, (upper - mu) / sigma
+        ball_speed = truncnorm.rvs(a, b, loc=mu, scale=sigma)
+        return round(ball_speed, 1)
 
     def simulate_tournament(self, player_ids, tournament_id, tournament_year):
         tournament_pairings = [
@@ -92,6 +111,8 @@ class GameStats:
                     "result": "W",
                     "points_scored": winner_points,
                     "points_allowed": loser_points,
+                    "fastest_ball_speed": self.simulate_fastest_ball_speed(),
+                    "aces": self.simulate_aces(winner_points),
                 }
 
                 self.game_stats.loc[len(self.game_stats)] = {
@@ -103,6 +124,8 @@ class GameStats:
                     "result": "L",
                     "points_scored": loser_points,
                     "points_allowed": winner_points,
+                    "fastest_ball_speed": self.simulate_fastest_ball_speed(),
+                    "aces": self.simulate_aces(loser_points),
                 }
 
                 match_id_counter += 1
