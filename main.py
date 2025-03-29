@@ -1,4 +1,5 @@
 import ast
+import asyncio
 from datetime import datetime
 import random
 import math
@@ -6,7 +7,8 @@ import os
 
 import pandas as pd
 from scipy.stats import truncnorm
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
+from openai.helpers import LocalAudioPlayer
 from dotenv import load_dotenv, find_dotenv
 
 env_file = find_dotenv(os.path.join(os.getcwd(), ".env"))
@@ -32,6 +34,7 @@ class GPTPrompts:
     def __init__(self):
         api_key = os.getenv("OPENAI_API_KEY")
         self.gpt_client = GPTClient(api_key)
+        self.async_openai = AsyncOpenAI(api_key=api_key)
 
     def generate_player_info(self):
         messages = [
@@ -78,7 +81,8 @@ class GPTPrompts:
                     "You are an insightful and engaging sports commentator assistant. "
                     "You always return structured, clear, and realistic commentary in JSON format, "
                     "as an ordered list of turns. Each turn must be represented as an object with two keys: "
-                    "'speaker' (alternating strictly between 'Tony McCrae' and 'Nina Novak') and 'text' (the commentary line). "
+                    "'speaker' (alternating strictly between 'Tony McCrae' and 'Nina Novak') and 'text' (the commentary). "
+                    "Allow each speaker to speak multiple consecutive sentences in a single turn before switching to the other. "
                     "Never use markdown formatting or additional explanations in the JSON response."
                 ),
             },
@@ -86,23 +90,25 @@ class GPTPrompts:
                 "role": "user",
                 "content": (
                     f"Here is the head-to-head statistics for today's Pong game:\n"
-                    f"Player ID: {h2h["player_id"]} vs Opponent ID: {h2h["opponent_id"]}\n"
-                    f"Player Names: {h2h["player_name"]} vs {h2h["opponent_name"]}\n"
-                    f"Player Ranks: World Number {h2h["player_rank"] + 1} vs World Number {h2h["opponent_rank"] + 1}\n"
-                    f"Countries: {h2h["player_country"]} vs {h2h["opponent_country"]}\n"
-                    f"Dates of Birth: {h2h["player_dob"]} vs {h2h["opponent_dob"]}\n"
-                    f"Playing Styles: {h2h["player_style"]} vs {h2h["opponent_style"]}\n"
-                    f"Total Games faced against each other: {h2h["total_games"]}\n"
-                    f"Win Rate of Player {h2h["player_name"]}: {h2h["win_rate"]*100}%\n"
-                    f"Win Rate of Player {h2h["opponent_name"]}: {100 - h2h["win_rate"]*100}%\n"
-                    f"Average Points Scored by {h2h["player_name"]} against {h2h["opponent_name"]}: {h2h["avg_points_scored"]}\n"
-                    f"Average Points Allowed by {h2h["player_name"]} against {h2h["opponent_name"]}: {h2h["avg_points_allowed"]}\n"
-                    f"Recent Match Outcomes (from {h2h["player_name"]}'s perspective - against {h2h["opponent_name"]}): {', '.join(h2h["head_to_head"])}\n\n"
+                    f"Player ID: {h2h['player_id']} vs Opponent ID: {h2h['opponent_id']}\n"
+                    f"Player Names: {h2h['player_name']} vs {h2h['opponent_name']}\n"
+                    f"Player Ranks: World Number {h2h['player_rank'] + 1} vs World Number {h2h['opponent_rank'] + 1}\n"
+                    f"Countries: {h2h['player_country']} vs {h2h['opponent_country']}\n"
+                    f"Dates of Birth: {h2h['player_dob']} vs {h2h['opponent_dob']}\n"
+                    f"Playing Styles: {h2h['player_style']} vs {h2h['opponent_style']}\n"
+                    f"Total Games faced against each other: {h2h['total_games']}\n"
+                    f"Win Rate of Player {h2h['player_name']}: {h2h['win_rate']*100}%\n"
+                    f"Win Rate of Player {h2h['opponent_name']}: {100 - h2h['win_rate']*100}%\n"
+                    f"Average Points Scored by {h2h['player_name']} against {h2h['opponent_name']}: {h2h['avg_points_scored']}\n"
+                    f"Average Points Allowed by {h2h['player_name']} against {h2h['opponent_name']}: {h2h['avg_points_allowed']}\n"
+                    f"Recent Match Outcomes (from {h2h['player_name']}'s perspective - against {h2h['opponent_name']}): "
+                    f"{', '.join(h2h['head_to_head'])}\n\n"
                     f"Generate a commentary opening script structured exactly as an ordered list in JSON format, with each item containing:\n"
                     f"- 'speaker': alternating strictly between 'Tony McCrae' and 'Nina Novak'\n"
-                    f"- 'text': detailed commentary line\n\n"
+                    f"- 'text': multiple consecutive sentences of commentary under one speaker before switching.\n\n"
                     f"Include explicitly:\n"
                     f"- Extend a warm, lively welcome to our global audience, setting an enthusiastic tone right from the start.\n"
+                    f"- Briefly introduce the two commentators.\n"
                     f"- Spotlight Madrid, Spain as our grand host, highlighting its global sporting significance and cultural vibrancy.\n"
                     f"- Reveal and discuss both players' world rankings and how those standings elevate the competitive stakes.\n"
                     f"- Provide an engaging, data-driven breakdown of their head-to-head match history and notable statistics.\n"
@@ -115,6 +121,37 @@ class GPTPrompts:
         chat_response = self.gpt_client.chat(messages)
         chat_response = ast.literal_eval(chat_response)
         return chat_response
+
+    async def speak(self, input, voice):
+        instructions = (
+            ""
+            "Personality/affect: A high-energy sports commentator guiding users through administrative tasks.\n\n"
+            "Voice: Dynamic, passionate, and engaging, with an exhilarating and motivating quality.\n\n"
+            "Tone: Excited and enthusiastic, turning routine tasks into thrilling and high-stakes events.\n\n"
+            "Dialect: Informal, fast-paced, and energetic, using sports terminology, vibrant metaphors, and enthusiastic phrasing.\n\n"
+            "Pronunciation: Clear, powerful, and emphatic, emphasizing key actions and successes as if celebrating a game-winning moment.\n\n"
+            "Features: Incorporates vivid sports analogies, enthusiastic exclamations, "
+            "and rapid-fire commentary style to build excitement and maintain a lively pace throughout interactions.\n"
+            ""
+        )
+
+        async with self.async_openai.audio.speech.with_streaming_response.create(
+            model="gpt-4o-mini-tts",
+            voice=voice,
+            input=input,
+            speed=1.4,
+            instructions=instructions,
+            response_format="pcm",
+        ) as response:
+            await LocalAudioPlayer().play(response)
+
+    async def speak_opening_script(head_to_head_stats):
+        opening_script = gpt_prompts.generate_opening_script(head_to_head_stats)
+        print(opening_script)
+
+        for line in opening_script:
+            voice = "ballad" if line["speaker"] == "Tony McCrae" else "coral"
+            await gpt_prompts.speak(line["text"], voice)
 
 
 class GameStats:
@@ -302,7 +339,7 @@ class GameStats:
             player_stats = self.game_stats[self.game_stats["player_id"] == player_id]
             total_games = len(player_stats)
             total_wins = len(player_stats[player_stats["result"] == "W"])
-            win_rate = total_wins / total_games
+            win_rate = total_wins / total_games if total_games > 0 else 0
             avg_points_scored = round(player_stats["points_scored"].mean(), 2)
             avg_points_allowed = round(player_stats["points_allowed"].mean(), 2)
             points_diff = round(avg_points_scored - avg_points_allowed, 2)
@@ -365,7 +402,7 @@ class GameStats:
         head_to_head = player_games[player_games["opponent_id"] == opponent_id]
         total_games = len(head_to_head)
         total_wins = len(head_to_head[head_to_head["result"] == "W"])
-        win_rate = total_wins / total_games
+        win_rate = total_wins / total_games if total_games > 0 else 0
         avg_points_scored = round(head_to_head["points_scored"].mean(), 2)
         avg_points_allowed = round(head_to_head["points_allowed"].mean(), 2)
         # rank of player_id and opponent_id using player_elo
@@ -422,5 +459,4 @@ if __name__ == "__main__":
         sorted_players[0][0], sorted_players[1][0]
     )
 
-    opening_script = gpt_prompts.generate_opening_script(head_to_head_stats)
-    print(opening_script)
+    asyncio.run(gpt_prompts.speak_opening_script(head_to_head_stats))
