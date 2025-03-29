@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Pong Game</title>
+    <style>
+      canvas {
+        background: #000;
+        display: block;
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script type="text/javascript" src="./eel.js"></script>
+    <script>
+      eel.expose(update_pong);
+      function update_pong(
+        ball,
+        left_paddle,
+        right_paddle,
+        left_score,
+        right_score
+      ) {
+        var canvas = document.getElementById("gameCanvas");
+        var ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, 2 * Math.PI);
+        ctx.fill();
+
+        ctx.fillRect(
+          left_paddle.x,
+          left_paddle.y,
+          left_paddle.width,
+          left_paddle.height
+        );
+        ctx.fillRect(
+          right_paddle.x,
+          right_paddle.y,
+          right_paddle.width,
+          right_paddle.height
+        );
+
+        ctx.font = "30px Arial";
+        ctx.fillText(left_score, canvas.width / 4, 50);
+        ctx.fillText(right_score, (3 * canvas.width) / 4, 50);
+      }
+    </script>
+  </body>
+</html>

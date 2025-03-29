@@ -4,12 +4,16 @@ from datetime import datetime
 import random
 import math
 import os
+import time
+import threading
+
 
 import pandas as pd
 from scipy.stats import truncnorm
 from openai import OpenAI, AsyncOpenAI
 from openai.helpers import LocalAudioPlayer
 from dotenv import load_dotenv, find_dotenv
+import eel
 
 env_file = find_dotenv(os.path.join(os.getcwd(), ".env"))
 load_dotenv(env_file)
@@ -434,29 +438,182 @@ class GameStats:
         }
 
 
+class PongGame:
+    def __init__(self):
+        self.width = 800
+        self.height = 600
+
+        self.ball = {
+            "x": self.width / 2,
+            "y": self.height / 2,
+            "vx": 5,
+            "vy": 3,
+            "radius": 10,
+        }
+
+        self.left_paddle = {
+            "x": 10,
+            "y": self.height / 2 - 50,
+            "width": 10,
+            "height": 100,
+            "speed": 4,
+        }
+        self.right_paddle = {
+            "x": self.width - 20,
+            "y": self.height / 2 - 50,
+            "width": 10,
+            "height": 100,
+            "speed": 4,
+        }
+
+        self.left_score = 0
+        self.right_score = 0
+
+        self.game_speed = 0.016
+
+        eel.init("./web")
+
+    def reset_ball(self, direction=1):
+        self.ball["x"] = self.width / 2
+        self.ball["y"] = self.height / 2
+        self.shot_velocity_x(direction)
+        self.shot_velocity_y()
+
+    def shot_velocity_x(self, direction):
+        self.ball["vx"] = direction * random.choice([i for i in range(5, 15)])
+
+    def shot_velocity_y(self):
+        self.ball["vy"] = random.choice(
+            [i for i in range(-4, -10, -1)] + [i for i in range(4, 10)]
+        )
+
+    def predict_ball_y(self, paddle_x):
+        if (paddle_x < self.width / 2 and self.ball["vx"] >= 0) or (
+            paddle_x > self.width / 2 and self.ball["vx"] <= 0
+        ):
+            return self.height / 2
+
+        time_to_reach = abs((paddle_x - self.ball["x"]) / self.ball["vx"])
+        y = self.ball["y"] + self.ball["vy"] * time_to_reach
+
+        while y < 0 or y > self.height:
+            if y < 0:
+                y = -y
+            elif y > self.height:
+                y = 2 * self.height - y
+        return y
+
+    def move_paddle_toward(self, paddle, target_y):
+        center = paddle["y"] + paddle["height"] / 2
+        if abs(center - target_y) < paddle["speed"]:
+            return
+        if center < target_y:
+            if paddle["y"] + paddle["height"] < self.height:
+                paddle["y"] += paddle["speed"]
+        elif center > target_y:
+            if paddle["y"] > 0:
+                paddle["y"] -= paddle["speed"]
+
+    def update_game(self):
+        self.ball["x"] += self.ball["vx"]
+        self.ball["y"] += self.ball["vy"]
+
+        if (
+            self.ball["y"] - self.ball["radius"] <= 0
+            or self.ball["y"] + self.ball["radius"] >= self.height
+        ):
+            self.ball["vy"] *= -1
+
+        left_target = (
+            self.predict_ball_y(self.left_paddle["x"])
+            if self.ball["vx"] < 0
+            else self.height / 2
+        )
+        self.move_paddle_toward(self.left_paddle, left_target)
+
+        right_target = (
+            self.predict_ball_y(self.right_paddle["x"])
+            if self.ball["vx"] > 0
+            else self.height / 2
+        )
+        self.move_paddle_toward(self.right_paddle, right_target)
+
+        if (
+            self.ball["x"] - self.ball["radius"]
+            <= self.left_paddle["x"] + self.left_paddle["width"]
+            and self.left_paddle["y"]
+            <= self.ball["y"]
+            <= self.left_paddle["y"] + self.left_paddle["height"]
+        ):
+            direction = 1 if self.ball["vx"] < 0 else -1
+            self.shot_velocity_x(direction)
+
+        if (
+            self.ball["x"] + self.ball["radius"] >= self.right_paddle["x"]
+            and self.right_paddle["y"]
+            <= self.ball["y"]
+            <= self.right_paddle["y"] + self.right_paddle["height"]
+        ):
+            direction = 1 if self.ball["vx"] < 0 else -1
+            self.shot_velocity_x(direction)
+
+        if self.ball["x"] < 0:
+            self.right_score += 1
+            self.reset_ball(direction=1)
+        elif self.ball["x"] > self.width:
+            self.left_score += 1
+            self.reset_ball(direction=-1)
+
+    async def game_loop(self):
+        while True:
+            self.update_game()
+            eel.update_pong(
+                self.ball,
+                self.left_paddle,
+                self.right_paddle,
+                self.left_score,
+                self.right_score,
+            )
+            await asyncio.sleep(self.game_speed)
+
+    def start_game(self):
+        def start_eel():
+            eel.start("index.html", size=(self.width, self.height), block=True)
+
+        eel_thread = threading.Thread(target=start_eel)
+        eel_thread.daemon = True
+        eel_thread.start()
+
+        time.sleep(1)
+        self.reset_ball(direction=random.choice([-1, 1]))
+        asyncio.run(self.game_loop())
+
+
 if __name__ == "__main__":
-    simul = GameStats()
-    gpt_prompts = GPTPrompts()
-    num_players_per_tournament = 64
+    # simul = GameStats()
+    # gpt_prompts = GPTPrompts()
+    # num_players_per_tournament = 64
 
-    player_ids = list(range(1, num_players_per_tournament + 1))
-    player_rankings = list(range(1, num_players_per_tournament + 1))
-    player_info = gpt_prompts.generate_player_info()
-    random.shuffle(player_rankings)
+    # player_ids = list(range(1, num_players_per_tournament + 1))
+    # player_rankings = list(range(1, num_players_per_tournament + 1))
+    # player_info = gpt_prompts.generate_player_info()
+    # random.shuffle(player_rankings)
 
-    simul.assign_init_elo(player_ids, player_rankings)
+    # simul.assign_init_elo(player_ids, player_rankings)
 
-    number_of_tournaments = 15
-    tournament_year = 2025 - number_of_tournaments
-    for tournament_id in range(0, number_of_tournaments):
-        simul.simulate_tournament(player_ids, tournament_id, tournament_year)
-        tournament_year += 1
+    # number_of_tournaments = 15
+    # tournament_year = 2025 - number_of_tournaments
+    # for tournament_id in range(0, number_of_tournaments):
+    #     simul.simulate_tournament(player_ids, tournament_id, tournament_year)
+    #     tournament_year += 1
 
-    sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
-    simul.player_statistics(player_ids, player_info)
-    simul.player_stats.to_csv("player_stats.csv", index=False)
-    head_to_head_stats = simul.head_to_head_statistics(
-        sorted_players[0][0], sorted_players[1][0]
-    )
+    # sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
+    # simul.player_statistics(player_ids, player_info)
+    # simul.player_stats.to_csv("player_stats.csv", index=False)
+    # head_to_head_stats = simul.head_to_head_statistics(
+    #     sorted_players[0][0], sorted_players[1][0]
+    # )
 
-    asyncio.run(gpt_prompts.speak_opening_script(head_to_head_stats))
+    # asyncio.run(gpt_prompts.speak_opening_script(head_to_head_stats))
+
+    PongGame().start_game()
