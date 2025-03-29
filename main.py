@@ -70,6 +70,52 @@ class GPTPrompts:
             }
         return player_info
 
+    def generate_opening_script(self, h2h):
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an insightful and engaging sports commentator assistant. "
+                    "You always return structured, clear, and realistic commentary in JSON format, "
+                    "as an ordered list of turns. Each turn must be represented as an object with two keys: "
+                    "'speaker' (alternating strictly between 'Tony McCrae' and 'Nina Novak') and 'text' (the commentary line). "
+                    "Never use markdown formatting or additional explanations in the JSON response."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Here is the head-to-head statistics for today's Pong game:\n"
+                    f"Player ID: {h2h["player_id"]} vs Opponent ID: {h2h["opponent_id"]}\n"
+                    f"Player Names: {h2h["player_name"]} vs {h2h["opponent_name"]}\n"
+                    f"Player Ranks: World Number {h2h["player_rank"] + 1} vs World Number {h2h["opponent_rank"] + 1}\n"
+                    f"Countries: {h2h["player_country"]} vs {h2h["opponent_country"]}\n"
+                    f"Dates of Birth: {h2h["player_dob"]} vs {h2h["opponent_dob"]}\n"
+                    f"Playing Styles: {h2h["player_style"]} vs {h2h["opponent_style"]}\n"
+                    f"Total Games faced against each other: {h2h["total_games"]}\n"
+                    f"Win Rate of Player {h2h["player_name"]}: {h2h["win_rate"]*100}%\n"
+                    f"Win Rate of Player {h2h["opponent_name"]}: {100 - h2h["win_rate"]*100}%\n"
+                    f"Average Points Scored by {h2h["player_name"]} against {h2h["opponent_name"]}: {h2h["avg_points_scored"]}\n"
+                    f"Average Points Allowed by {h2h["player_name"]} against {h2h["opponent_name"]}: {h2h["avg_points_allowed"]}\n"
+                    f"Recent Match Outcomes (from {h2h["player_name"]}'s perspective - against {h2h["opponent_name"]}): {', '.join(h2h["head_to_head"])}\n\n"
+                    f"Generate a commentary opening script structured exactly as an ordered list in JSON format, with each item containing:\n"
+                    f"- 'speaker': alternating strictly between 'Tony McCrae' and 'Nina Novak'\n"
+                    f"- 'text': detailed commentary line\n\n"
+                    f"Include explicitly:\n"
+                    f"- Extend a warm, lively welcome to our global audience, setting an enthusiastic tone right from the start.\n"
+                    f"- Spotlight Madrid, Spain as our grand host, highlighting its global sporting significance and cultural vibrancy.\n"
+                    f"- Reveal and discuss both players' world rankings and how those standings elevate the competitive stakes.\n"
+                    f"- Provide an engaging, data-driven breakdown of their head-to-head match history and notable statistics.\n"
+                    f"- Capture the excitement of each player's entrance, describing the crowd's anticipation and overall atmosphere.\n"
+                    f"- Begin the match with an official opening line that includes the phrase: 'Paddles out and away we pong!'\n\n"
+                    f"No additional explanations or markdown should appear outside this JSON-formatted list."
+                ),
+            },
+        ]
+        chat_response = self.gpt_client.chat(messages)
+        chat_response = ast.literal_eval(chat_response)
+        return chat_response
+
 
 class GameStats:
     def __init__(self):
@@ -303,21 +349,52 @@ class GameStats:
 
     def head_to_head_statistics(self, player_id, opponent_id):
         player_games = self.game_stats[self.game_stats["player_id"] == player_id]
+        player_name = self.player_stats[self.player_stats["player_id"] == player_id][
+            "name"
+        ].values[0]
+        opponent_name = self.player_stats[
+            self.player_stats["player_id"] == opponent_id
+        ]["name"].values[0]
+        player_country, player_dob, player_style = self.player_stats.loc[
+            self.player_stats["player_id"] == player_id, ["country", "dob", "style"]
+        ].iloc[0]
+        opponent_country, opponent_dob, opponent_style = self.player_stats.loc[
+            self.player_stats["player_id"] == opponent_id, ["country", "dob", "style"]
+        ].iloc[0]
+
         head_to_head = player_games[player_games["opponent_id"] == opponent_id]
         total_games = len(head_to_head)
         total_wins = len(head_to_head[head_to_head["result"] == "W"])
         win_rate = total_wins / total_games
         avg_points_scored = round(head_to_head["points_scored"].mean(), 2)
         avg_points_allowed = round(head_to_head["points_allowed"].mean(), 2)
-        return (
-            player_id,
-            opponent_id,
-            total_games,
-            win_rate,
-            avg_points_scored,
-            avg_points_allowed,
-            head_to_head["result"].values,
-        )
+        # rank of player_id and opponent_id using player_elo
+        player_rank = sorted(
+            self.player_elo.items(), key=lambda x: x[1], reverse=True
+        ).index((player_id, self.player_elo[player_id]))
+        opponent_rank = sorted(
+            self.player_elo.items(), key=lambda x: x[1], reverse=True
+        ).index((opponent_id, self.player_elo[opponent_id]))
+
+        return {
+            "player_id": player_id,
+            "opponent_id": opponent_id,
+            "player_name": player_name,
+            "opponent_name": opponent_name,
+            "player_country": player_country,
+            "opponent_country": opponent_country,
+            "player_dob": player_dob,
+            "opponent_dob": opponent_dob,
+            "player_style": player_style,
+            "opponent_style": opponent_style,
+            "total_games": total_games,
+            "win_rate": win_rate,
+            "avg_points_scored": avg_points_scored,
+            "avg_points_allowed": avg_points_allowed,
+            "head_to_head": head_to_head["result"].values,
+            "player_rank": player_rank,
+            "opponent_rank": opponent_rank,
+        }
 
 
 if __name__ == "__main__":
@@ -341,3 +418,9 @@ if __name__ == "__main__":
     sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
     simul.player_statistics(player_ids, player_info)
     simul.player_stats.to_csv("player_stats.csv", index=False)
+    head_to_head_stats = simul.head_to_head_statistics(
+        sorted_players[0][0], sorted_players[1][0]
+    )
+
+    opening_script = gpt_prompts.generate_opening_script(head_to_head_stats)
+    print(opening_script)
