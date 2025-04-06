@@ -445,14 +445,18 @@ class PongGame:
 
         self.ball = {
             "x": self.width / 2,
+            # this is the center of the ball
             "y": self.height / 2,
+            # speed and dir in x dir
             "vx": 5,
+            # speed and dir in y dir
             "vy": 3,
             "radius": 10,
         }
 
         self.left_paddle = {
             "x": 10,
+            # this is the top of the paddle
             "y": self.height / 2 - 50,
             "width": 10,
             "height": 100,
@@ -469,6 +473,7 @@ class PongGame:
         self.left_score = 0
         self.right_score = 0
 
+        # Approximately 60 FPS
         self.game_speed = 0.016
 
         eel.init("./web")
@@ -488,14 +493,21 @@ class PongGame:
         )
 
     def predict_ball_y(self, paddle_x):
+        # if paddle is on the left and ball is moving to the right,
+        # stand at the center mark, and vice versa
         if (paddle_x < self.width / 2 and self.ball["vx"] >= 0) or (
             paddle_x > self.width / 2 and self.ball["vx"] <= 0
         ):
             return self.height / 2
 
+        # how long it will take for the ball to reach the paddle
         time_to_reach = abs((paddle_x - self.ball["x"]) / self.ball["vx"])
+        # estimate where the paddle should be,
+        # by adding up the ball's current y position
+        # with the y dist it will take to reach the paddle
         y = self.ball["y"] + self.ball["vy"] * time_to_reach
 
+        # if the ball is out of bounds, we need to reflect it
         while y < 0 or y > self.height:
             if y < 0:
                 y = -y
@@ -505,12 +517,18 @@ class PongGame:
 
     def move_paddle_toward(self, paddle, target_y):
         center = paddle["y"] + paddle["height"] / 2
+        # paddle speed determines the accuracy of the prediction
+        # and the speed of the paddle AI
         if abs(center - target_y) < paddle["speed"]:
             return
         if center < target_y:
+            # if the paddle is not overshooting across the bottom of the screen,
+            # move it closer to the predicted y position
             if paddle["y"] + paddle["height"] < self.height:
                 paddle["y"] += paddle["speed"]
         elif center > target_y:
+            # if the paddle is not overshooting across the top of the screen,
+            # move it closer to the predicted y position
             if paddle["y"] > 0:
                 paddle["y"] -= paddle["speed"]
 
@@ -518,12 +536,18 @@ class PongGame:
         self.ball["x"] += self.ball["vx"]
         self.ball["y"] += self.ball["vy"]
 
+        # collision with top and bottom walls
         if (
             self.ball["y"] - self.ball["radius"] <= 0
             or self.ball["y"] + self.ball["radius"] >= self.height
         ):
             self.ball["vy"] *= -1
 
+        # AI paddle movement for left paddle
+        # There is no fancy AI here.
+        # We simply check where the ball is going to be in the y direction,
+        # based on the ball's velocity,
+        # and move the paddle to the predicted y position (within an approx range)
         left_target = (
             self.predict_ball_y(self.left_paddle["x"])
             if self.ball["vx"] < 0
@@ -531,6 +555,8 @@ class PongGame:
         )
         self.move_paddle_toward(self.left_paddle, left_target)
 
+        # AI paddle movement for right paddle
+        # Similar to the left paddle
         right_target = (
             self.predict_ball_y(self.right_paddle["x"])
             if self.ball["vx"] > 0
@@ -538,6 +564,8 @@ class PongGame:
         )
         self.move_paddle_toward(self.right_paddle, right_target)
 
+        # if the ball hits the left paddle
+        # we need the left paddle to make a new shot with a new velocity
         if (
             self.ball["x"] - self.ball["radius"]
             <= self.left_paddle["x"] + self.left_paddle["width"]
@@ -545,18 +573,19 @@ class PongGame:
             <= self.ball["y"]
             <= self.left_paddle["y"] + self.left_paddle["height"]
         ):
-            direction = 1 if self.ball["vx"] < 0 else -1
-            self.shot_velocity_x(direction)
+            self.shot_velocity_x(direction=1)
 
+        # ball hitting the right paddle
+        # similar to the left paddle but in the opposite direction
         if (
             self.ball["x"] + self.ball["radius"] >= self.right_paddle["x"]
             and self.right_paddle["y"]
             <= self.ball["y"]
             <= self.right_paddle["y"] + self.right_paddle["height"]
         ):
-            direction = 1 if self.ball["vx"] < 0 else -1
-            self.shot_velocity_x(direction)
+            self.shot_velocity_x(direction=-1)
 
+        # ball's out of bounds
         if self.ball["x"] < 0:
             self.right_score += 1
             self.reset_ball(direction=1)
@@ -567,6 +596,7 @@ class PongGame:
     async def game_loop(self):
         while True:
             self.update_game()
+            # invoke index.html's update_pong function
             eel.update_pong(
                 self.ball,
                 self.left_paddle,
@@ -576,6 +606,7 @@ class PongGame:
                 self.width,
                 self.height,
             )
+            # wait for the next frame
             await asyncio.sleep(self.game_speed)
 
     def start_game(self):
