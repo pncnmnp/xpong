@@ -149,13 +149,13 @@ class GPTPrompts:
         ) as response:
             await LocalAudioPlayer().play(response)
 
-    async def speak_opening_script(head_to_head_stats):
-        opening_script = gpt_prompts.generate_opening_script(head_to_head_stats)
+    async def speak_opening_script(self, head_to_head_stats):
+        opening_script = self.generate_opening_script(head_to_head_stats)
         print(opening_script)
 
         for line in opening_script:
             voice = "ballad" if line["speaker"] == "Tony McCrae" else "coral"
-            await gpt_prompts.speak(line["text"], voice)
+            await self.speak(line["text"], voice)
 
 
 class GameStats:
@@ -573,12 +573,16 @@ class PongGame:
                 self.right_paddle,
                 self.left_score,
                 self.right_score,
+                self.width,
+                self.height,
             )
             await asyncio.sleep(self.game_speed)
 
     def start_game(self):
         def start_eel():
-            eel.start("index.html", size=(self.width, self.height), block=True)
+            eel.start(
+                "index.html", size=(self.width + 200, self.height + 200), block=True
+            )
 
         eel_thread = threading.Thread(target=start_eel)
         eel_thread.daemon = True

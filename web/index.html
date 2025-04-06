@@ -21,13 +21,23 @@
         left_paddle,
         right_paddle,
         left_score,
-        right_score
+        right_score,
+        width,
+        height
       ) {
         var canvas = document.getElementById("gameCanvas");
         var ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
         ctx.fillStyle = "#fff";
+
+        ctx.beginPath();
+        ctx.moveTo(width / 2, 0);
+        ctx.lineTo(width / 2, height);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.closePath();
+        ctx.stroke();
+
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, ball.radius, 0, 2 * Math.PI);
         ctx.fill();
@@ -45,7 +55,7 @@
           right_paddle.height
         );
 
-        ctx.font = "30px Arial";
+        ctx.font = "30px Monaco";
         ctx.fillText(left_score, canvas.width / 4, 50);
         ctx.fillText(right_score, (3 * canvas.width) / 4, 50);
       }
