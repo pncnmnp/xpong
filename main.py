@@ -611,9 +611,7 @@ class PongGame:
 
     def start_game(self):
         def start_eel():
-            eel.start(
-                "index.html", size=(self.width + 200, self.height + 200), block=True
-            )
+            eel.start("index.html", size=(self.width, self.height), block=True)
 
         eel_thread = threading.Thread(target=start_eel)
         eel_thread.daemon = True
