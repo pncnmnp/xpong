@@ -584,6 +584,11 @@ class PongGame:
             <= self.left_paddle["y"] + self.left_paddle["height"]
         ):
             self.shot_velocity_x(direction=1)
+            # variable volume between 0.1 and 1, based on the new shot speed
+            # when the shot is softest, the velocity is 5, and volume is 0.1
+            # when the shot is hardest, the velocity is 15, and volume is 1
+            volume = ((abs(self.ball["vx"]) - 5) / 10) * 0.9 + 0.1
+            eel.play_sound(volume)
 
         # ball hitting the right paddle
         # similar to the left paddle but in the opposite direction
@@ -594,6 +599,8 @@ class PongGame:
             <= self.right_paddle["y"] + self.right_paddle["height"]
         ):
             self.shot_velocity_x(direction=-1)
+            volume = ((abs(self.ball["vx"]) - 5) / 10) * 0.9 + 0.1
+            eel.play_sound(volume)
 
         # ball's out of bounds
         if self.ball["x"] < 0:
@@ -654,7 +661,7 @@ if __name__ == "__main__":
 
     sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
     simul.player_statistics(player_ids, player_info)
-    simul.player_stats.to_csv("player_stats.csv", index=False)
+    simul.player_stats.to_csv("./assets/player_stats.csv", index=False)
     head_to_head_stats = simul.head_to_head_statistics(
         sorted_players[0][0], sorted_players[1][0]
     )

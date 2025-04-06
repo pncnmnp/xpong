@@ -14,6 +14,15 @@
   <body>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
     <script type="text/javascript" src="./eel.js"></script>
+    <audio id="paddleHitSound" src="./paddle_hit.m4a"></audio>
+    <script>
+      eel.expose(play_sound);
+      function play_sound(volume) {
+        const paddleHitSound = document.getElementById("paddleHitSound");
+        paddleHitSound.volume = volume;
+        paddleHitSound.play();
+      }
+    </script>
     <script>
       eel.expose(update_pong);
       function update_pong(
