@@ -6,7 +6,7 @@ import math
 import os
 import time
 import threading
-
+import logging
 
 import pandas as pd
 from scipy.stats import truncnorm
@@ -17,6 +17,12 @@ import eel
 
 env_file = find_dotenv(os.path.join(os.getcwd(), ".env"))
 load_dotenv(env_file)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 class GPTClient:
@@ -673,30 +679,43 @@ class PongGame:
 
 
 if __name__ == "__main__":
+    logger.info("Generating tournament data...")
     simul = GameStats()
     gpt_prompts = GPTPrompts()
     num_players_per_tournament = 64
+    logger.info(f"{num_players_per_tournament} players in the tournament...")
 
     player_ids = list(range(1, num_players_per_tournament + 1))
     player_rankings = list(range(1, num_players_per_tournament + 1))
-    player_info = gpt_prompts.generate_player_info()
-    random.shuffle(player_rankings)
 
+    logger.info("Generating player information from GPT...")
+    player_info = gpt_prompts.generate_player_info()
+
+    logger.info("Shuffle player rankings and assign ELO ratings...")
+    random.shuffle(player_rankings)
     simul.assign_init_elo(player_ids, player_rankings)
 
     number_of_tournaments = 15
     tournament_year = 2025 - number_of_tournaments
+    logger.info(
+        f"Simulating {number_of_tournaments} tournaments starting with year {tournament_year}..."
+    )
     for tournament_id in range(0, number_of_tournaments):
         simul.simulate_tournament(player_ids, tournament_id, tournament_year)
         tournament_year += 1
 
+    logger.info(f"Generate player statistics based on tournament data...")
     sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
     simul.player_statistics(player_ids, player_info)
-    simul.player_stats.to_csv("./assets/player_stats.csv", index=False)
+    simul.player_stats.to_csv("./player_stats.csv", index=False)
+
+    logger.info(f"Generate head-to-head statistics for the top 2 players...")
     head_to_head_stats = simul.head_to_head_statistics(
         sorted_players[0][0], sorted_players[1][0]
     )
 
+    logger.info(f"Start the opening commentary script...")
     asyncio.run(gpt_prompts.speak_opening_script(head_to_head_stats))
 
+    logger.info("Starting Pong Game...")
     PongGame().start_game()
