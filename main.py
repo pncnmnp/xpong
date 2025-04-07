@@ -450,7 +450,12 @@ class MetricsCollector:
 
     def record_event(self, event_type, player=None, data=None):
         # Record the event with a timestamp
-        # Event types are: "point_scored", etc.
+        # The event type can be one of the following:
+        # - ball_bounce
+        # - shot_speed
+        # - serve_speed
+        # - point_scored
+        # - paddle_position
         # We use L and R to indicate left and right players
         # This is encoded in the player
         event = {
@@ -459,6 +464,7 @@ class MetricsCollector:
             "data": data,
             "timestamp": time.time(),
         }
+        # logger.info(f"Event recorded: {event}")
         self.events.append(event)
 
 
@@ -653,6 +659,14 @@ class PongGame:
                 player="L",
                 data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
             )
+            self.metrics.record_event(
+                event_type="paddle_position",
+                player="L",
+                data={
+                    "L": self.left_paddle["y"],
+                    "R": self.right_paddle["y"],
+                },
+            )
             self.play_paddle_shot_sound()
 
         # ball hitting the right paddle
@@ -669,6 +683,14 @@ class PongGame:
                 event_type="shot_speed",
                 player="R",
                 data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
+            )
+            self.metrics.record_event(
+                event_type="paddle_position",
+                player="R",
+                data={
+                    "L": self.left_paddle["y"],
+                    "R": self.right_paddle["y"],
+                },
             )
             self.play_paddle_shot_sound()
 
