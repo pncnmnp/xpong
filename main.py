@@ -460,14 +460,14 @@ class PongGame:
             "y": self.height / 2 - 50,
             "width": 10,
             "height": 100,
-            "speed": 4,
+            "speed": 6,
         }
         self.right_paddle = {
             "x": self.width - 20,
             "y": self.height / 2 - 50,
             "width": 10,
             "height": 100,
-            "speed": 4,
+            "speed": 6,
         }
 
         self.left_score = 0
@@ -481,9 +481,27 @@ class PongGame:
         eel.init("./web")
 
     def init_ball(self, direction):
-        self.ball["x"] = self.width / 2
-        self.ball["y"] = self.height / 2
+        # If left side just lost, we serve on left side
+        if direction == 1:
+            # Position ball next to the left paddle
+            self.ball["x"] = (
+                self.left_paddle["x"] + self.left_paddle["width"] + self.ball["radius"]
+            )
+            # Place the ball vertically at a random part of the left paddle
+            self.ball["y"] = self.left_paddle["y"] + random.randrange(
+                math.ceil(self.left_paddle["height"] * 0.25),
+                math.ceil(self.left_paddle["height"] * 0.75),
+            )
+        # If right side just lost, we serve on right side
+        elif direction == -1:
+            self.ball["x"] = self.right_paddle["x"] - self.ball["radius"]
+            self.ball["y"] = self.right_paddle["y"] + random.randrange(
+                math.ceil(self.right_paddle["height"] * 0.25),
+                math.ceil(self.right_paddle["height"] * 0.75),
+            )
+
         self.shot_velocity_x(direction)
+        self.play_paddle_shot_sound()
         self.shot_velocity_y()
 
     async def reset_ball(self, direction=1):
@@ -498,6 +516,13 @@ class PongGame:
         self.ball["vy"] = random.choice(
             [i for i in range(-4, -10, -1)] + [i for i in range(4, 10)]
         )
+
+    def play_paddle_shot_sound(self):
+        # variable volume between 0.1 and 1, based on the new shot speed
+        # when the shot is softest, the velocity is 5, and volume is 0.1
+        # when the shot is hardest, the velocity is 15, and volume is 1
+        volume = ((abs(self.ball["vx"]) - 5) / 10) * 0.9 + 0.1
+        eel.play_sound(volume)
 
     def predict_ball_y(self, paddle_x):
         net_line = self.width / 2
@@ -595,11 +620,7 @@ class PongGame:
             <= self.left_paddle["y"] + self.left_paddle["height"]
         ):
             self.shot_velocity_x(direction=1)
-            # variable volume between 0.1 and 1, based on the new shot speed
-            # when the shot is softest, the velocity is 5, and volume is 0.1
-            # when the shot is hardest, the velocity is 15, and volume is 1
-            volume = ((abs(self.ball["vx"]) - 5) / 10) * 0.9 + 0.1
-            eel.play_sound(volume)
+            self.play_paddle_shot_sound()
 
         # ball hitting the right paddle
         # similar to the left paddle but in the opposite direction
@@ -610,8 +631,7 @@ class PongGame:
             <= self.right_paddle["y"] + self.right_paddle["height"]
         ):
             self.shot_velocity_x(direction=-1)
-            volume = ((abs(self.ball["vx"]) - 5) / 10) * 0.9 + 0.1
-            eel.play_sound(volume)
+            self.play_paddle_shot_sound()
 
         # ball's out of bounds
         if self.ball["x"] < 0:
