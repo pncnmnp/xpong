@@ -500,10 +500,21 @@ class PongGame:
         )
 
     def predict_ball_y(self, paddle_x):
+        net_line = self.width / 2
         # if paddle is on the left and ball is moving to the right,
         # stand at the center mark, and vice versa
-        if (paddle_x < self.width / 2 and self.ball["vx"] >= 0) or (
-            paddle_x > self.width / 2 and self.ball["vx"] <= 0
+        if (paddle_x < net_line and self.ball["vx"] >= 0) or (
+            paddle_x > net_line and self.ball["vx"] <= 0
+        ):
+            return self.height / 2
+
+        # reaction time
+        # if the paddle is on left, and ball is moving to the left,
+        # we start the prediction after ball crosses the the net line
+        # and vice versa
+        # tuning this, changes how strong the AI can predict the ball
+        if (paddle_x < net_line and self.ball["x"] > net_line) or (
+            paddle_x > net_line and self.ball["x"] < net_line
         ):
             return self.height / 2
 
