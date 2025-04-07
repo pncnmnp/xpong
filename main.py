@@ -444,8 +444,28 @@ class GameStats:
         }
 
 
+class MetricsCollector:
+    def __init__(self):
+        self.events = []
+
+    def record_event(self, event_type, player=None, data=None):
+        # Record the event with a timestamp
+        # Event types are: "point_scored", etc.
+        # We use L and R to indicate left and right players
+        # This is encoded in the player
+        event = {
+            "type": event_type,
+            "player": player,
+            "data": data,
+            "timestamp": time.time(),
+        }
+        self.events.append(event)
+
+
 class PongGame:
     def __init__(self):
+        self.metrics = MetricsCollector()
+
         self.width = 800
         self.height = 600
 
@@ -593,6 +613,7 @@ class PongGame:
             self.ball["y"] - self.ball["radius"] <= 0
             or self.ball["y"] + self.ball["radius"] >= self.height
         ):
+            self.metrics.record_event(event_type="ball_bounce")
             self.ball["vy"] *= -1
 
         # AI paddle movement for left paddle
@@ -626,6 +647,12 @@ class PongGame:
             <= self.left_paddle["y"] + self.left_paddle["height"]
         ):
             self.shot_velocity_x(direction=1)
+            self.shot_velocity_y()
+            self.metrics.record_event(
+                event_type="shot_speed",
+                player="L",
+                data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
+            )
             self.play_paddle_shot_sound()
 
         # ball hitting the right paddle
@@ -637,17 +664,35 @@ class PongGame:
             <= self.right_paddle["y"] + self.right_paddle["height"]
         ):
             self.shot_velocity_x(direction=-1)
+            self.shot_velocity_y()
+            self.metrics.record_event(
+                event_type="shot_speed",
+                player="R",
+                data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
+            )
             self.play_paddle_shot_sound()
 
         # ball's out of bounds
         if self.ball["x"] < 0:
             self.ball_in_play = False
             self.right_score += 1
+            self.metrics.record_event(event_type="point_scored", player="R")
             asyncio.create_task(self.reset_ball(direction=1))
+            self.metrics.record_event(
+                event_type="serve_speed",
+                player="L",
+                data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
+            )
         elif self.ball["x"] > self.width:
             self.ball_in_play = False
             self.left_score += 1
+            self.metrics.record_event(event_type="point_scored", player="L")
             asyncio.create_task(self.reset_ball(direction=-1))
+            self.metrics.record_event(
+                event_type="serve_speed",
+                player="R",
+                data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
+            )
 
     async def game_loop(self):
         while True:
