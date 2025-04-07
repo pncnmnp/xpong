@@ -667,7 +667,12 @@ class PongGame:
 
     def start_game(self):
         def start_eel():
-            eel.start("index.html", size=(self.width, self.height), block=True)
+            eel.start(
+                "index.html",
+                size=(self.width, self.height),
+                block=True,
+                close_callback=self.close_window,
+            )
 
         eel_thread = threading.Thread(target=start_eel)
         eel_thread.daemon = True
@@ -676,6 +681,10 @@ class PongGame:
         time.sleep(1)
         self.init_ball(direction=random.choice([-1, 1]))
         asyncio.run(self.game_loop())
+
+    def close_window(self, _route, _websockets):
+        logger.info("Closing the game window...")
+        os._exit(0)
 
 
 if __name__ == "__main__":
