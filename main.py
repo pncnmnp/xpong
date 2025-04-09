@@ -467,6 +467,192 @@ class MetricsCollector:
         # logger.info(f"Event recorded: {event}")
         self.events.append(event)
 
+    def get_recent_events(self, past_seconds):
+        if past_seconds == -1:
+            return self.events
+        cutoff = time.time() - past_seconds
+        recent_events = [event for event in self.events if event["timestamp"] >= cutoff]
+        return recent_events
+
+    def get_score_metrics(self):
+        left_score, right_score = 0, 0
+        for event in self.events:
+            if event["type"] == "point_scored":
+                player = event["player"]
+                if player == "L":
+                    left_score += 1
+                elif player == "R":
+                    right_score += 1
+        return left_score, right_score
+
+    def get_shot_speed_events(self, events):
+        left_shot_speed, right_shot_speed = [], []
+        for event in events:
+            if event["type"] == "shot_speed":
+                player = event["player"]
+                speed = event["data"]
+                if player == "L":
+                    left_shot_speed.append(speed)
+                elif player == "R":
+                    right_shot_speed.append(speed)
+        return left_shot_speed, right_shot_speed
+
+    def get_serve_speed_events(self, events):
+        left_serve_speed, right_serve_speed = [], []
+        for event in events:
+            if event["type"] == "serve_speed":
+                player = event["player"]
+                speed = event["data"]
+                if player == "L":
+                    left_serve_speed.append(speed)
+                elif player == "R":
+                    right_serve_speed.append(speed)
+        return left_serve_speed, right_serve_speed
+
+    def get_max_streaks(self):
+        left_streak, right_streak = 0, 0
+        left_max_streak, right_max_streak = 0, 0
+        for event in self.events:
+            if event["type"] == "point_scored":
+                player = event["player"]
+                if player == "L":
+                    left_streak += 1
+                    right_streak = 0
+                    left_max_streak = max(left_max_streak, left_streak)
+                elif player == "R":
+                    right_streak += 1
+                    left_streak = 0
+                    right_max_streak = max(right_max_streak, right_streak)
+        return left_max_streak, right_max_streak
+
+    def get_recent_rally(self, events):
+        rally_count = 0
+        for event in events:
+            if event["type"] == "shot_speed" or event["type"] == "serve_speed":
+                player = event["player"]
+                if player == "L":
+                    rally_count += 1
+                elif player == "R":
+                    rally_count += 1
+            elif event["type"] == "point_scored":
+                rally_count = 0
+        return rally_count
+
+    def get_all_rally(self, events):
+        rally_count = 0
+        total_rallies = []
+        for event in events:
+            if event["type"] == "shot_speed" or event["type"] == "serve_speed":
+                player = event["player"]
+                if player == "L":
+                    rally_count += 1
+                elif player == "R":
+                    rally_count += 1
+            elif event["type"] == "point_scored":
+                total_rallies.append(rally_count)
+                rally_count = 0
+        return total_rallies
+
+    def convert_to_scalar_speed(self, data):
+        if not data:
+            return None
+        game_speed = lambda vx, vy: round(math.sqrt(vx**2 + vy**2), 2)
+        data = [game_speed(vx, vy) for vx, vy in data]
+        # Deltas are added to prevent capping exactly at 160
+        min_game_speed = 6.4  # approx sqrt(5**2 + 4**2)
+        max_game_speed = 16.5  # approx sqrt(14**2 + 19**2)
+        mph_min = 100
+        mph_max = 160
+        mph = (
+            lambda speed: ((speed - min_game_speed) / (max_game_speed - min_game_speed))
+            * (mph_max - mph_min)
+            + mph_min
+            + random.uniform(-5, 5)  # to prevent players from getting similar numbers
+        )
+        return [round(mph(speed), 2) for speed in data]
+
+    def compute_metrics(self, past_seconds):
+        # Compute metrics based on the recorded events
+        # These metrics are:
+        # Per player:
+        # - Score
+        # - Recent most, average, minimum, and maximum speed from shots and serves
+        # - Previous serve quality
+        # - Recent most, and average ball trajectory from shots and serves
+        # - Recent most, and average paddle position from shots and serves
+        # - Current and max streaks (winning and losing)
+        # Both players:
+        # - Average, and maximum rally
+        events = self.get_recent_events(past_seconds)
+        left_score, right_score = self.get_score_metrics()
+
+        left_shot_speeds, right_shot_speeds = self.get_shot_speed_events(events)
+        left_shot_speeds = self.convert_to_scalar_speed(left_shot_speeds)
+        right_shot_speeds = self.convert_to_scalar_speed(right_shot_speeds)
+
+        recent_left_shot_speed = left_shot_speeds[-1] if left_shot_speeds else None
+        recent_right_shot_speed = right_shot_speeds[-1] if right_shot_speeds else None
+        left_shot_speed_avg = (
+            round(sum(left_shot_speeds) / len(left_shot_speeds), 2)
+            if left_shot_speeds
+            else None
+        )
+        right_shot_speed_avg = (
+            round(sum(right_shot_speeds) / len(right_shot_speeds), 2)
+            if right_shot_speeds
+            else None
+        )
+        left_shot_speed_max = max(left_shot_speeds) if left_shot_speeds else None
+        right_shot_speed_max = max(right_shot_speeds) if right_shot_speeds else None
+
+        left_serve_speeds, right_serve_speeds = self.get_serve_speed_events(events)
+        left_serve_speeds = self.convert_to_scalar_speed(left_serve_speeds)
+        right_serve_speeds = self.convert_to_scalar_speed(right_serve_speeds)
+
+        recent_left_serve_speed = left_serve_speeds[-1] if left_serve_speeds else None
+        recent_right_serve_speed = (
+            right_serve_speeds[-1] if right_serve_speeds else None
+        )
+        left_serve_speed_avg = (
+            round(sum(left_serve_speeds) / len(left_serve_speeds), 2)
+            if left_serve_speeds
+            else None
+        )
+        right_serve_speed_avg = (
+            round(sum(right_serve_speeds) / len(right_serve_speeds), 2)
+            if right_serve_speeds
+            else None
+        )
+        left_serve_speed_max = max(left_serve_speeds) if left_serve_speeds else None
+        right_serve_speed_max = max(right_serve_speeds) if right_serve_speeds else None
+
+        left_max_streak, right_max_streak = self.get_max_streaks()
+
+        recent_rally = self.get_recent_rally(events)
+        all_rallies = self.get_all_rally(events)
+        average_rally = sum(all_rallies) / len(all_rallies) if all_rallies else None
+
+        return {
+            "left_score": left_score,
+            "right_score": right_score,
+            "recent_left_shot_speed": recent_left_shot_speed,
+            "recent_right_shot_speed": recent_right_shot_speed,
+            "left_shot_speed_avg": left_shot_speed_avg,
+            "right_shot_speed_avg": right_shot_speed_avg,
+            "left_shot_speed_max": left_shot_speed_max,
+            "right_shot_speed_max": right_shot_speed_max,
+            "recent_left_serve_speed": recent_left_serve_speed,
+            "recent_right_serve_speed": recent_right_serve_speed,
+            "left_serve_speed_avg": left_serve_speed_avg,
+            "right_serve_speed_avg": right_serve_speed_avg,
+            "left_serve_speed_max": left_serve_speed_max,
+            "right_serve_speed_max": right_serve_speed_max,
+            "left_max_streak": left_max_streak,
+            "right_max_streak": right_max_streak,
+            "average_rally": average_rally,
+            "recent_rally": recent_rally,
+        }
+
 
 class PongGame:
     def __init__(self):
@@ -751,6 +937,7 @@ class PongGame:
 
     def close_window(self, _route, _websockets):
         logger.info("Closing the game window...")
+        # print(self.metrics.compute_metrics(past_seconds=-1))
         os._exit(0)
 
 
