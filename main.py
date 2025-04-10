@@ -132,6 +132,46 @@ class GPTPrompts:
         chat_response = ast.literal_eval(chat_response)
         return chat_response
 
+    def generate_in_game_commentary(
+        self, base_metrics, commentary_history, score_change=False
+    ):
+        speaker = random.choice(["Tony McCrae", "Nina Novak"])
+        score_change_prompt = "You don't need to include the score in the commentary. Focus on the game metrics."
+        if score_change:
+            score_change_prompt = (
+                "The score has changed. "
+                "Please include the new score in the commentary."
+            )
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an insightful and dynamic sports commentator assistant providing real-time, short commentary based on the provided game metrics. "
+                    "Return your answer in JSON format as a single object with two keys: 'speaker' and 'text'. "
+                    f"Choose {speaker} as the speaker. "
+                    "Keep the commentary text less than 200 characters and focused on interesting aspects of the game, without unnecessary elaboration or additional formatting."
+                    "Refer to the players using their first names only, and avoid using their full names. "
+                    "When referring to the speed of the ball, use just the speed value without any units. For example, 'The ball is moving at 120' instead of 'The ball is moving at 120 mph'. "
+                    "Use the past commentary history in deciding the next commentary. We want to avoid repeating similar style of commentary to keep the audience engaged. "
+                    "Also, make sure to use the past commentary history to decide the metrics to focus on. Avoid repeating the same metrics over and over again in a short span of time. "
+                    f" {score_change_prompt}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Base Metrics:\n{base_metrics}\n\n"
+                    f"Commentary History:\n{commentary_history}\n\n"
+                    "Generate a short commentary that highlights the interesting aspects of the game based on these metrics. "
+                    "Return your answer as a JSON object with 'speaker' and 'text'."
+                ),
+            },
+        ]
+        chat_response = self.gpt_client.chat(messages)
+        chat_response = ast.literal_eval(chat_response)
+        return chat_response
+
     async def speak(self, input, voice):
         instructions = (
             ""
@@ -155,6 +195,10 @@ class GPTPrompts:
         ) as response:
             await LocalAudioPlayer().play(response)
 
+    async def speak_in_game_commentary(self, commentary_script):
+        voice = "ballad" if commentary_script["speaker"] == "Tony McCrae" else "coral"
+        await self.speak(commentary_script["text"], voice)
+
     async def speak_opening_script(self, head_to_head_stats):
         opening_script = self.generate_opening_script(head_to_head_stats)
         print(opening_script)
@@ -162,6 +206,25 @@ class GPTPrompts:
         for line in opening_script:
             voice = "ballad" if line["speaker"] == "Tony McCrae" else "coral"
             await self.speak(line["text"], voice)
+
+
+class CommentaryManager:
+    def __init__(self, gpt_prompts):
+        self.gpt_prompts = gpt_prompts
+        self.queue = asyncio.Queue()
+
+    def flush_queue(self):
+        while not self.queue.empty():
+            self.queue.get_nowait()
+
+    def enqueue(self, commentary_script):
+        self.queue.put_nowait(commentary_script)
+
+    async def process_queue(self):
+        while True:
+            commentary_script = await self.queue.get()
+            await self.gpt_prompts.speak_in_game_commentary(commentary_script)
+            self.queue.task_done()
 
 
 class GameStats:
@@ -602,8 +665,8 @@ class MetricsCollector:
             if right_shot_speeds
             else None
         )
-        left_shot_speed_max = max(left_shot_speeds) if left_shot_speeds else None
-        right_shot_speed_max = max(right_shot_speeds) if right_shot_speeds else None
+        # left_shot_speed_max = max(left_shot_speeds) if left_shot_speeds else None
+        # right_shot_speed_max = max(right_shot_speeds) if right_shot_speeds else None
 
         left_serve_speeds, right_serve_speeds = self.get_serve_speed_events(events)
         left_serve_speeds = self.convert_to_scalar_speed(left_serve_speeds)
@@ -623,8 +686,8 @@ class MetricsCollector:
             if right_serve_speeds
             else None
         )
-        left_serve_speed_max = max(left_serve_speeds) if left_serve_speeds else None
-        right_serve_speed_max = max(right_serve_speeds) if right_serve_speeds else None
+        # left_serve_speed_max = max(left_serve_speeds) if left_serve_speeds else None
+        # right_serve_speed_max = max(right_serve_speeds) if right_serve_speeds else None
 
         left_max_streak, right_max_streak = self.get_max_streaks()
 
@@ -639,14 +702,10 @@ class MetricsCollector:
             "recent_right_shot_speed": recent_right_shot_speed,
             "left_shot_speed_avg": left_shot_speed_avg,
             "right_shot_speed_avg": right_shot_speed_avg,
-            "left_shot_speed_max": left_shot_speed_max,
-            "right_shot_speed_max": right_shot_speed_max,
             "recent_left_serve_speed": recent_left_serve_speed,
             "recent_right_serve_speed": recent_right_serve_speed,
             "left_serve_speed_avg": left_serve_speed_avg,
             "right_serve_speed_avg": right_serve_speed_avg,
-            "left_serve_speed_max": left_serve_speed_max,
-            "right_serve_speed_max": right_serve_speed_max,
             "left_max_streak": left_max_streak,
             "right_max_streak": right_max_streak,
             "average_rally": average_rally,
@@ -698,6 +757,13 @@ class PongGame:
 
         eel.init("./web")
 
+        self.gpt_prompts = GPTPrompts()
+        self.head_to_head_stats = None
+        self.last_commentary_time = None
+        self.last_metrics_snapshot = None
+        self.commentary_manager = CommentaryManager(self.gpt_prompts)
+        self.commentary_history = []
+
     def init_ball(self, direction):
         # If left side just lost, we serve on left side
         if direction == 1:
@@ -723,7 +789,7 @@ class PongGame:
         self.shot_velocity_y()
 
     async def reset_ball(self, direction=1):
-        await asyncio.sleep(5)
+        await asyncio.sleep(8)
         self.init_ball(direction)
         self.ball_in_play = True
 
@@ -891,6 +957,10 @@ class PongGame:
                 player="L",
                 data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
             )
+            self.commentary_manager.flush_queue()
+            asyncio.create_task(
+                self.generate_and_enqueue_commentary(score_change=True),
+            )
         elif self.ball["x"] > self.width:
             self.ball_in_play = False
             self.left_score += 1
@@ -901,8 +971,37 @@ class PongGame:
                 player="R",
                 data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
             )
+            self.commentary_manager.flush_queue()
+            asyncio.create_task(
+                self.generate_and_enqueue_commentary(score_change=True),
+            )
+
+    async def generate_and_enqueue_commentary(self, score_change=False):
+        base_metrics = await asyncio.to_thread(self.metrics.compute_metrics, -1)
+
+        base_metrics["left_player_name"] = self.head_to_head_stats["player_name"]
+        base_metrics["right_player_name"] = self.head_to_head_stats["opponent_name"]
+        base_metrics["left_player_style"] = self.head_to_head_stats["player_style"]
+        base_metrics["right_player_style"] = self.head_to_head_stats["opponent_style"]
+        base_metrics["left_player_country"] = self.head_to_head_stats["player_country"]
+        base_metrics["right_player_country"] = self.head_to_head_stats[
+            "opponent_country"
+        ]
+        base_metrics["left_player_rank"] = self.head_to_head_stats["player_rank"]
+        base_metrics["right_player_rank"] = self.head_to_head_stats["opponent_rank"]
+
+        commentary_script = await asyncio.to_thread(
+            self.gpt_prompts.generate_in_game_commentary,
+            base_metrics,
+            self.commentary_history,
+            score_change,
+        )
+        self.commentary_history.append(commentary_script)
+        self.commentary_manager.enqueue(commentary_script)
 
     async def game_loop(self):
+        # Start the commentary worker (runs continuously in the background)
+        asyncio.create_task(self.commentary_manager.process_queue())
         while True:
             self.update_game()
             # invoke index.html's update_pong function
@@ -915,10 +1014,19 @@ class PongGame:
                 self.width,
                 self.height,
             )
+            current_time = time.time()
+            if (
+                self.last_commentary_time is None
+                or current_time - self.last_commentary_time > 5
+            ):
+                self.last_commentary_time = current_time
+                asyncio.create_task(self.generate_and_enqueue_commentary())
             # wait for the next frame
             await asyncio.sleep(self.game_speed)
 
-    def start_game(self):
+    def start_game(self, head_to_head_stats):
+        self.head_to_head_stats = head_to_head_stats
+
         def start_eel():
             eel.start(
                 "index.html",
@@ -981,4 +1089,4 @@ if __name__ == "__main__":
     asyncio.run(gpt_prompts.speak_opening_script(head_to_head_stats))
 
     logger.info("Starting Pong Game...")
-    PongGame().start_game()
+    PongGame().start_game(head_to_head_stats)
