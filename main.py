@@ -135,38 +135,62 @@ class GPTPrompts:
     def generate_in_game_commentary(
         self, base_metrics, commentary_history, score_change=False
     ):
-        speaker = random.choice(["Tony McCrae", "Nina Novak"])
-        score_change_prompt = (
-            "Score updated – include the new score."
-            if score_change
-            else "Don't mention the score; focus on game metrics."
+        if commentary_history:
+            last_speaker = commentary_history[-1].get("speaker", "")
+            speaker = "Tony McCrae" if last_speaker == "Nina Novak" else "Nina Novak"
+        else:
+            speaker = random.choice(["Tony McCrae", "Nina Novak"])
+
+        # Determine if hype is required
+        long_rally = base_metrics["recent_rally"] and base_metrics["recent_rally"] >= 6
+        long_streak = (
+            max(base_metrics["left_max_streak"], base_metrics["right_max_streak"]) >= 3
         )
-        color_flag = random.choice([0, 1])
+
+        should_hype = score_change or long_rally or long_streak
+
+        hype_prompt = (
+            "Increase excitement! Highlight this moment energetically."
+            if should_hype
+            else "Keep a conversational tone—no excessive excitement."
+        )
+
+        score_change_prompt = (
+            "The score just changed; mention the new score explicitly."
+            if score_change
+            else "Don't explicitly mention the score this time."
+        )
+
+        color_flag = random.choices([0, 1], [0.7, 0.3])[
+            0
+        ]  # More frequent normal commentary
 
         messages = [
             {
                 "role": "system",
                 "content": (
-                    f"You are a sports commentator assistant for a Pong game. "
-                    f"Return a JSON object with keys 'speaker' and 'text', using {speaker} as the speaker. "
-                    "Keep the commentary under 200 characters and refer to players by first names only. "
-                    "Avoid repeatedly mentioning speed metrics unless they are very significant. "
-                    "Use past commentary history to vary your focus. "
-                    "If the color commentary flag is 1, provide creative meta commentary on the game and strategy. "
-                    f"{score_change_prompt} "
-                    "Do not use markdown or add extra commentary outside the JSON."
+                    f"You are a sports commentator assistant for an ongoing Pong game. "
+                    f"Generate the next short commentary snippet spoken by {speaker}. "
+                    f"Provide a natural conversational flow by briefly acknowledging or reacting to what your co-commentator previously said. "
+                    f"Base your commentary on the provided metrics and recent commentary history, and avoid repeating similar observations consecutively. "
+                    f"{hype_prompt} {score_change_prompt} "
+                    f"If the color commentary flag is set to 1, provide creative meta-commentary about the game's strategy, player styles, or atmosphere, without relying heavily on numerical metrics. "
+                    "Always keep the text under 200 characters, refer to players by first names only, and avoid excessive focus on shot and serve speeds unless highly significant. "
+                    "Never include markdown or explanations outside the JSON response. "
+                    "Return the commentary as a JSON object with keys 'speaker' and 'text'."
                 ),
             },
             {
                 "role": "user",
                 "content": (
                     f"Base Metrics:\n{base_metrics}\n\n"
-                    f"Commentary History:\n{commentary_history}\n\n"
+                    f"Recent Commentary History:\n{commentary_history[-3:]}\n\n"
                     f"Color Commentary Flag: {color_flag}\n\n"
-                    "Generate a brief, engaging commentary highlighting the key aspects of the game."
+                    "Generate your next brief commentary now."
                 ),
             },
         ]
+
         chat_response = self.gpt_client.chat(messages)
         return ast.literal_eval(chat_response)
 
