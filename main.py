@@ -649,8 +649,8 @@ class MetricsCollector:
         # Deltas are added to prevent capping exactly at 160
         min_game_speed = 6.4  # approx sqrt(5**2 + 4**2)
         max_game_speed = 16.5  # approx sqrt(14**2 + 19**2)
-        mph_min = 100
-        mph_max = 160
+        mph_min = 60
+        mph_max = 100
         mph = (
             lambda speed: ((speed - min_game_speed) / (max_game_speed - min_game_speed))
             * (mph_max - mph_min)

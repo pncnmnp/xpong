@@ -68,58 +68,63 @@
           right_paddle.height
         );
 
-        const boxWidth = 200;
-        const boxHeight = 80;
-        const padding = 10;
+        const cellPadding = 10;
+        const colWidths = [140, 60, 120];
+        const rowHeight = 25;
+        const tableWidth = colWidths[0] + colWidths[1] + colWidths[2];
+        const tableHeight = rowHeight * 2;
 
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-        ctx.fillRect(padding, padding, boxWidth, boxHeight);
+        const tableX = 10;
+        const tableY = canvas.height - tableHeight - 10;
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(tableX, tableY, tableWidth, tableHeight);
+
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
-        ctx.strokeRect(padding, padding, boxWidth, boxHeight);
+        ctx.strokeRect(tableX, tableY, tableWidth, tableHeight);
 
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-        ctx.fillRect(
-          canvas.width - boxWidth - padding,
-          padding,
-          boxWidth,
-          boxHeight
-        );
-        ctx.strokeStyle = "#fff";
-        ctx.strokeRect(
-          canvas.width - boxWidth - padding,
-          padding,
-          boxWidth,
-          boxHeight
-        );
+        let currentX = tableX;
+        for (let i = 0; i < colWidths.length - 1; i++) {
+          currentX += colWidths[i];
+          ctx.beginPath();
+          ctx.moveTo(currentX, tableY);
+          ctx.lineTo(currentX, tableY + tableHeight);
+          ctx.stroke();
+        }
+
+        const rowSeparatorY = tableY + rowHeight;
+        ctx.beginPath();
+        ctx.moveTo(tableX, rowSeparatorY);
+        ctx.lineTo(tableX + tableWidth, rowSeparatorY);
+        ctx.stroke();
 
         ctx.fillStyle = "#fff";
         ctx.font = "16px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
 
-        const leftName = left_player_name;
-        const leftLastShot =
-          left_last_shot_speed == null ? "-" : left_last_shot_speed;
-        ctx.fillText(leftName, padding + 10, padding + 20);
-        ctx.fillText(left_score, padding + 10, padding + 40);
-        ctx.fillText(leftLastShot + " mph", padding + 10, padding + 60);
+        const col0Center = tableX + colWidths[0] / 2;
+        const col1Center = tableX + colWidths[0] + colWidths[1] / 2;
+        const col2Center =
+          tableX + colWidths[0] + colWidths[1] + colWidths[2] / 2;
 
-        const rightName = right_player_name;
-        const rightLastShot =
-          right_last_shot_speed == null ? "-" : right_last_shot_speed;
+        let cellCenterY = tableY + rowHeight / 2;
+        ctx.fillText(left_player_name, col0Center, cellCenterY);
+        ctx.fillText(left_score, col1Center, cellCenterY);
         ctx.fillText(
-          rightName,
-          canvas.width - boxWidth - padding + 10,
-          padding + 20
+          left_last_shot_speed == null ? "-" : left_last_shot_speed + " mph",
+          col2Center,
+          cellCenterY
         );
+
+        cellCenterY = tableY + rowHeight + rowHeight / 2;
+        ctx.fillText(right_player_name, col0Center, cellCenterY);
+        ctx.fillText(right_score, col1Center, cellCenterY);
         ctx.fillText(
-          right_score,
-          canvas.width - boxWidth - padding + 10,
-          padding + 40
-        );
-        ctx.fillText(
-          rightLastShot + " mph",
-          canvas.width - boxWidth - padding + 10,
-          padding + 60
+          right_last_shot_speed == null ? "-" : right_last_shot_speed + " mph",
+          col2Center,
+          cellCenterY
         );
       }
     </script>
