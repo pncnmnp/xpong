@@ -655,9 +655,14 @@ class MetricsCollector:
             lambda speed: ((speed - min_game_speed) / (max_game_speed - min_game_speed))
             * (mph_max - mph_min)
             + mph_min
-            + random.uniform(-5, 5)  # to prevent players from getting similar numbers
+            # + random.uniform(-5, 5)  # to prevent players from getting similar numbers
         )
         return [round(mph(speed), 2) for speed in data]
+
+    def shot_to_scalar_speed(self, last_shot_speed):
+        if not last_shot_speed:
+            return None
+        return self.convert_to_scalar_speed([last_shot_speed])[0]
 
     def compute_metrics(self, past_seconds):
         # Compute metrics based on the recorded events
@@ -780,6 +785,9 @@ class PongGame:
 
         self.left_score = 0
         self.right_score = 0
+
+        self.left_last_shot_speed = None
+        self.right_last_shot_speed = None
 
         # Approximately 60 FPS
         self.game_speed = 0.016
@@ -937,10 +945,11 @@ class PongGame:
         ):
             self.shot_velocity_x(direction=1)
             self.shot_velocity_y()
+            self.left_last_shot_speed = abs(self.ball["vx"]), abs(self.ball["vy"])
             self.metrics.record_event(
                 event_type="shot_speed",
                 player="L",
-                data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
+                data=(self.left_last_shot_speed),
             )
             self.metrics.record_event(
                 event_type="paddle_position",
@@ -962,10 +971,11 @@ class PongGame:
         ):
             self.shot_velocity_x(direction=-1)
             self.shot_velocity_y()
+            self.right_last_shot_speed = abs(self.ball["vx"]), abs(self.ball["vy"])
             self.metrics.record_event(
                 event_type="shot_speed",
                 player="R",
-                data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
+                data=(self.right_last_shot_speed),
             )
             self.metrics.record_event(
                 event_type="paddle_position",
@@ -1047,6 +1057,10 @@ class PongGame:
                 self.right_score,
                 self.width,
                 self.height,
+                self.head_to_head_stats["player_name"],
+                self.head_to_head_stats["opponent_name"],
+                self.metrics.shot_to_scalar_speed(self.left_last_shot_speed),
+                self.metrics.shot_to_scalar_speed(self.right_last_shot_speed),
             )
             current_time = time.time()
             if (

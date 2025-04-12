@@ -32,7 +32,11 @@
         left_score,
         right_score,
         width,
-        height
+        height,
+        left_player_name,
+        right_player_name,
+        left_last_shot_speed,
+        right_last_shot_speed
       ) {
         var canvas = document.getElementById("gameCanvas");
         var ctx = canvas.getContext("2d");
@@ -64,9 +68,59 @@
           right_paddle.height
         );
 
-        ctx.font = "30px Monaco";
-        ctx.fillText(left_score, canvas.width / 4, 50);
-        ctx.fillText(right_score, (3 * canvas.width) / 4, 50);
+        const boxWidth = 200;
+        const boxHeight = 80;
+        const padding = 10;
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+        ctx.fillRect(padding, padding, boxWidth, boxHeight);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(padding, padding, boxWidth, boxHeight);
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+        ctx.fillRect(
+          canvas.width - boxWidth - padding,
+          padding,
+          boxWidth,
+          boxHeight
+        );
+        ctx.strokeStyle = "#fff";
+        ctx.strokeRect(
+          canvas.width - boxWidth - padding,
+          padding,
+          boxWidth,
+          boxHeight
+        );
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "16px Arial";
+
+        const leftName = left_player_name;
+        const leftLastShot =
+          left_last_shot_speed == null ? "-" : left_last_shot_speed;
+        ctx.fillText(leftName, padding + 10, padding + 20);
+        ctx.fillText(left_score, padding + 10, padding + 40);
+        ctx.fillText(leftLastShot + " mph", padding + 10, padding + 60);
+
+        const rightName = right_player_name;
+        const rightLastShot =
+          right_last_shot_speed == null ? "-" : right_last_shot_speed;
+        ctx.fillText(
+          rightName,
+          canvas.width - boxWidth - padding + 10,
+          padding + 20
+        );
+        ctx.fillText(
+          right_score,
+          canvas.width - boxWidth - padding + 10,
+          padding + 40
+        );
+        ctx.fillText(
+          rightLastShot + " mph",
+          canvas.width - boxWidth - padding + 10,
+          padding + 60
+        );
       }
     </script>
   </body>
