@@ -161,9 +161,7 @@ class GPTPrompts:
             else "Don't explicitly mention the score this time."
         )
 
-        color_flag = random.choices([0, 1], [0.7, 0.3])[
-            0
-        ]  # More frequent normal commentary
+        color_flag = random.choices([0, 1], [0.7, 0.3])[0]
 
         messages = [
             {
@@ -233,7 +231,11 @@ class GPTPrompts:
 class CommentaryManager:
     def __init__(self, gpt_prompts):
         self.gpt_prompts = gpt_prompts
+        self.queue = None
+
+    async def init(self):
         self.queue = asyncio.Queue()
+        asyncio.create_task(self.process_queue())
 
     def flush_queue(self):
         while not self.queue.empty():
@@ -1032,7 +1034,8 @@ class PongGame:
 
     async def game_loop(self):
         # Start the commentary worker (runs continuously in the background)
-        asyncio.create_task(self.commentary_manager.process_queue())
+        await self.commentary_manager.init()
+
         while True:
             self.update_game()
             # invoke index.html's update_pong function
