@@ -1119,7 +1119,7 @@ class PongGame:
 
 if __name__ == "__main__":
     CACHE_ENABLED = "--cache" in sys.argv
-    PLAYER_INFO_CACHE = "./player_info.pkl"
+    PLAYER_INFO_CACHE = "./assets/player_info.pkl"
 
     logger.info("Generating tournament data...")
     simul = GameStats()
