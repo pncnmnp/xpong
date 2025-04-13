@@ -1,12 +1,14 @@
 import ast
 import asyncio
 from datetime import datetime
+import pickle
 import random
 import math
 import os
 import time
 import threading
 import logging
+import sys
 
 import pandas as pd
 from scipy.stats import truncnorm
@@ -1106,6 +1108,9 @@ class PongGame:
 
 
 if __name__ == "__main__":
+    CACHE_ENABLED = "--cache" in sys.argv
+    PLAYER_INFO_CACHE = "./player_info.pkl"
+
     logger.info("Generating tournament data...")
     simul = GameStats()
     gpt_prompts = GPTPrompts()
@@ -1115,8 +1120,17 @@ if __name__ == "__main__":
     player_ids = list(range(1, num_players_per_tournament + 1))
     player_rankings = list(range(1, num_players_per_tournament + 1))
 
-    logger.info("Generating player information from GPT...")
-    player_info = gpt_prompts.generate_player_info()
+    if CACHE_ENABLED and os.path.exists(PLAYER_INFO_CACHE):
+        logger.info("Loading player information from cache...")
+        with open(PLAYER_INFO_CACHE, "rb") as f:
+            player_info = pickle.load(f)
+    else:
+        logger.info("Generating player information from GPT...")
+        player_info = gpt_prompts.generate_player_info()
+        if CACHE_ENABLED:
+            logger.info("Caching player information...")
+            with open(PLAYER_INFO_CACHE, "wb") as f:
+                pickle.dump(player_info, f)
 
     logger.info("Shuffle player rankings and assign ELO ratings...")
     random.shuffle(player_rankings)
