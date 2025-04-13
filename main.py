@@ -61,10 +61,11 @@ class GPTPrompts:
                 "content": (
                     "Generate exactly 64 rows of fictional person data. "
                     "Each row should be a JSON array (not an object) containing exactly 4 values: "
-                    "[autoincremented_id, full_name, country, date_of_birth]. "
+                    "[autoincremented_id, full_name, country_code, date_of_birth]. "
                     "The date of birth should be a string in 'YYYY-MM-DD' format, "
                     "and ages should be between 18 and 40 as of the year 2025. "
                     "Ensure names are culturally consistent with their country. "
+                    "The country codes should always be 2-letter ISO country codes. "
                     "Not all countries need to be represented; it's okay if some repeat. "
                     "Return only a single raw JSON array of arrays. "
                     "Do not include any commentary, preamble, or markdown formatting like triple backticks."
@@ -124,6 +125,7 @@ class GPTPrompts:
                     f"- Provide an engaging, data-driven breakdown of their head-to-head match history and notable statistics.\n"
                     f"- Capture the excitement of each player's entrance, describing the crowd's anticipation and overall atmosphere.\n"
                     f"- Begin the match with an official opening line that includes the phrase: 'Paddles out and away we pong!'\n\n"
+                    f"The country code are in ISO 3166-1 alpha-2 format. When commenting, make sure to use the full name of the country.\n\n"
                     f"No additional explanations or markdown should appear outside this JSON-formatted list."
                 ),
             },
@@ -1055,6 +1057,8 @@ class PongGame:
                 self.height,
                 self.head_to_head_stats["player_name"],
                 self.head_to_head_stats["opponent_name"],
+                self.head_to_head_stats["player_country"],
+                self.head_to_head_stats["opponent_country"],
                 self.metrics.shot_to_scalar_speed(self.left_last_shot_speed),
                 self.metrics.shot_to_scalar_speed(self.right_last_shot_speed),
             )
