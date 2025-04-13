@@ -228,30 +228,6 @@ class GPTPrompts:
             await self.speak(line["text"], voice)
 
 
-# class CommentaryManager:
-#     def __init__(self, gpt_prompts):
-#         self.gpt_prompts = gpt_prompts
-#         self.queue = None
-
-#     async def init(self):
-#         self.queue = asyncio.Queue()
-#         asyncio.create_task(self.process_queue())
-
-#     def flush_queue(self):
-#         while not self.queue.empty():
-#             self.queue.get_nowait()
-
-#     def enqueue(self, commentary_script):
-#         self.flush_queue()
-#         self.queue.put_nowait(commentary_script)
-
-#     async def process_queue(self):
-#         while True:
-#             commentary_script = await self.queue.get()
-#             await self.gpt_prompts.speak_in_game_commentary(commentary_script)
-#             self.queue.task_done()
-
-
 class CommentaryManager:
     def __init__(self, gpt_prompts):
         self.gpt_prompts = gpt_prompts
@@ -1066,9 +1042,6 @@ class PongGame:
         self.commentary_manager.enqueue(commentary_script)
 
     async def game_loop(self):
-        # Start the commentary worker (runs continuously in the background)
-        # await self.commentary_manager.init()
-
         while True:
             self.update_game()
             # invoke index.html's update_pong function
