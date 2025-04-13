@@ -46,13 +46,15 @@
         height,
         left_player_name,
         right_player_name,
+        left_player_ranking,
+        right_player_ranking,
         left_player_country,
         right_player_country,
         left_last_shot_speed,
         right_last_shot_speed
       ) {
-        console.log("left_player_country", left_player_country);
-        console.log("right_player_country", right_player_country);
+        console.log("left_player_ranking", left_player_ranking);
+        console.log("right_player_ranking", right_player_ranking);
         var canvas = document.getElementById("gameCanvas");
         var ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -84,10 +86,14 @@
         );
 
         const cellPadding = 10;
-        const colWidths = [40, 140, 60, 120];
+        const colWidths = [40, 40, 140, 40, 100];
         const rowHeight = 25;
         const tableWidth =
-          colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3];
+          colWidths[0] +
+          colWidths[1] +
+          colWidths[2] +
+          colWidths[3] +
+          colWidths[4];
         const tableHeight = rowHeight * 2;
 
         const tableX = 30;
@@ -130,26 +136,35 @@
           colWidths[1] +
           colWidths[2] +
           colWidths[3] / 2;
+        const col4Center =
+          tableX +
+          colWidths[0] +
+          colWidths[1] +
+          colWidths[2] +
+          colWidths[3] +
+          colWidths[4] / 2;
 
         let cellCenterY = tableY + rowHeight / 2;
         const leftFlag = countryCodeToEmoji(left_player_country);
         ctx.fillText(leftFlag, col0Center, cellCenterY);
-        ctx.fillText(left_player_name, col1Center, cellCenterY);
-        ctx.fillText(left_score, col2Center, cellCenterY);
+        ctx.fillText(left_player_ranking, col1Center, cellCenterY);
+        ctx.fillText(left_player_name, col2Center, cellCenterY);
+        ctx.fillText(left_score, col3Center, cellCenterY);
         ctx.fillText(
           left_last_shot_speed == null ? "-" : left_last_shot_speed + " mph",
-          col3Center,
+          col4Center,
           cellCenterY
         );
 
         cellCenterY = tableY + rowHeight + rowHeight / 2;
         const rightFlag = countryCodeToEmoji(right_player_country);
         ctx.fillText(rightFlag, col0Center, cellCenterY);
-        ctx.fillText(right_player_name, col1Center, cellCenterY);
-        ctx.fillText(right_score, col2Center, cellCenterY);
+        ctx.fillText(right_player_ranking, col1Center, cellCenterY);
+        ctx.fillText(right_player_name, col2Center, cellCenterY);
+        ctx.fillText(right_score, col3Center, cellCenterY);
         ctx.fillText(
           right_last_shot_speed == null ? "-" : right_last_shot_speed + " mph",
-          col3Center,
+          col4Center,
           cellCenterY
         );
       }

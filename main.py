@@ -103,7 +103,7 @@ class GPTPrompts:
                     f"Here is the head-to-head statistics for today's Pong game:\n"
                     f"Player ID: {h2h['player_id']} vs Opponent ID: {h2h['opponent_id']}\n"
                     f"Player Names: {h2h['player_name']} vs {h2h['opponent_name']}\n"
-                    f"Player Ranks: World Number {h2h['player_rank'] + 1} vs World Number {h2h['opponent_rank'] + 1}\n"
+                    f"Player Ranks: World Number {h2h['player_rank']} vs World Number {h2h['opponent_rank']}\n"
                     f"Countries: {h2h['player_country']} vs {h2h['opponent_country']}\n"
                     f"Dates of Birth: {h2h['player_dob']} vs {h2h['opponent_dob']}\n"
                     f"Playing Styles: {h2h['player_style']} vs {h2h['opponent_style']}\n"
@@ -505,12 +505,18 @@ class GameStats:
         avg_points_scored = round(head_to_head["points_scored"].mean(), 2)
         avg_points_allowed = round(head_to_head["points_allowed"].mean(), 2)
         # rank of player_id and opponent_id using player_elo
-        player_rank = sorted(
-            self.player_elo.items(), key=lambda x: x[1], reverse=True
-        ).index((player_id, self.player_elo[player_id]))
-        opponent_rank = sorted(
-            self.player_elo.items(), key=lambda x: x[1], reverse=True
-        ).index((opponent_id, self.player_elo[opponent_id]))
+        player_rank = (
+            sorted(self.player_elo.items(), key=lambda x: x[1], reverse=True).index(
+                (player_id, self.player_elo[player_id])
+            )
+            + 1
+        )
+        opponent_rank = (
+            sorted(self.player_elo.items(), key=lambda x: x[1], reverse=True).index(
+                (opponent_id, self.player_elo[opponent_id])
+            )
+            + 1
+        )
 
         return {
             "player_id": player_id,
@@ -1057,6 +1063,8 @@ class PongGame:
                 self.height,
                 self.head_to_head_stats["player_name"],
                 self.head_to_head_stats["opponent_name"],
+                self.head_to_head_stats["player_rank"],
+                self.head_to_head_stats["opponent_rank"],
                 self.head_to_head_stats["player_country"],
                 self.head_to_head_stats["opponent_country"],
                 self.metrics.shot_to_scalar_speed(self.left_last_shot_speed),
