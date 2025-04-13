@@ -238,10 +238,20 @@ class CommentaryManager:
         self.latest_commentary = None
         self.processing_task = None
 
+    def speak_filler(self):
+        filler_files = [
+            file for file in os.listdir("./assets/fillers") if file.endswith(".mp3")
+        ]
+        if filler_files:
+            random_file = random.choice(filler_files)
+            file_path = os.path.join("./assets/fillers", random_file)
+            os.system(f"mpg123 {file_path}")
+
     def flush(self):
         if self.processing_task is not None and not self.processing_task.done():
             self.processing_task.cancel()
             self.latest_commentary = None
+            self.processing_task.add_done_callback(lambda _: self.speak_filler())
 
     def enqueue(self, commentary_script):
         self.latest_commentary = commentary_script
