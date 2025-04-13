@@ -167,6 +167,7 @@ class GPTPrompts:
 
         color_flag = random.choices([0, 1], [0.7, 0.3])[0]
 
+        # TODO: When mentioning the new score, explicitly state which player scored the point
         messages = [
             {
                 "role": "system",
@@ -805,6 +806,9 @@ class PongGame:
         self.left_score = 0
         self.right_score = 0
 
+        self.rally_count = 0
+        self.last_shot_player = None
+
         self.left_last_shot_speed = None
         self.right_last_shot_speed = None
 
@@ -961,10 +965,13 @@ class PongGame:
             and self.left_paddle["y"]
             <= self.ball["y"]
             <= self.left_paddle["y"] + self.left_paddle["height"]
+            and self.last_shot_player != "L"
         ):
+            self.last_shot_player = "L"
             self.shot_velocity_x(direction=1)
             self.shot_velocity_y()
             self.left_last_shot_speed = abs(self.ball["vx"]), abs(self.ball["vy"])
+            self.rally_count += 1
             self.metrics.record_event(
                 event_type="shot_speed",
                 player="L",
@@ -987,10 +994,13 @@ class PongGame:
             and self.right_paddle["y"]
             <= self.ball["y"]
             <= self.right_paddle["y"] + self.right_paddle["height"]
+            and self.last_shot_player != "R"
         ):
+            self.last_shot_player = "R"
             self.shot_velocity_x(direction=-1)
             self.shot_velocity_y()
             self.right_last_shot_speed = abs(self.ball["vx"]), abs(self.ball["vy"])
+            self.rally_count += 1
             self.metrics.record_event(
                 event_type="shot_speed",
                 player="R",
@@ -1010,6 +1020,8 @@ class PongGame:
         if self.ball["x"] < 0:
             self.ball_in_play = False
             self.right_score += 1
+            self.rally_count = 1  # to account for the serve
+            self.last_shot_player = None
             self.metrics.record_event(event_type="point_scored", player="R")
             asyncio.create_task(self.reset_ball(direction=1))
             self.metrics.record_event(
@@ -1024,6 +1036,8 @@ class PongGame:
         elif self.ball["x"] > self.width:
             self.ball_in_play = False
             self.left_score += 1
+            self.rally_count = 1
+            self.last_shot_player = None
             self.metrics.record_event(event_type="point_scored", player="L")
             asyncio.create_task(self.reset_ball(direction=-1))
             self.metrics.record_event(
@@ -1081,6 +1095,7 @@ class PongGame:
                 self.head_to_head_stats["opponent_country"],
                 self.metrics.shot_to_scalar_speed(self.left_last_shot_speed),
                 self.metrics.shot_to_scalar_speed(self.right_last_shot_speed),
+                self.rally_count,
             )
             current_time = time.time()
             if (

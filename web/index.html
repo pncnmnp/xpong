@@ -51,7 +51,8 @@
         left_player_country,
         right_player_country,
         left_last_shot_speed,
-        right_last_shot_speed
+        right_last_shot_speed,
+        rally_counter
       ) {
         console.log("left_player_ranking", left_player_ranking);
         console.log("right_player_ranking", right_player_ranking);
@@ -88,12 +89,7 @@
         const cellPadding = 10;
         const colWidths = [40, 40, 140, 40, 100];
         const rowHeight = 25;
-        const tableWidth =
-          colWidths[0] +
-          colWidths[1] +
-          colWidths[2] +
-          colWidths[3] +
-          colWidths[4];
+        const tableWidth = colWidths.reduce((a, b) => a + b, 0);
         const tableHeight = rowHeight * 2;
 
         const tableX = 30;
@@ -167,6 +163,38 @@
           col4Center,
           cellCenterY
         );
+
+        if (rally_counter > 2) {
+          const tableWidth = 100;
+          const tableHeight = 30;
+          const tableX = canvas.width / 2 + canvas.width / 4 - 30;
+          const tableY = canvas.height - 50;
+
+          ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+          ctx.fillRect(tableX, tableY, tableWidth, tableHeight);
+
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(tableX, tableY, tableWidth, tableHeight);
+
+          const dividerX = tableX + tableWidth / 2;
+          ctx.beginPath();
+          ctx.moveTo(dividerX, tableY);
+          ctx.lineTo(dividerX, tableY + tableHeight);
+          ctx.stroke();
+
+          ctx.font = "16px Arial";
+          ctx.fillStyle = "#fff";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          const leftCellCenterX = tableX + tableWidth / 4;
+          const rightCellCenterX = tableX + (3 * tableWidth) / 4;
+          const cellCenterY = tableY + tableHeight / 1.8;
+
+          ctx.fillText("Rally", leftCellCenterX, cellCenterY);
+          ctx.fillText(rally_counter, rightCellCenterX, cellCenterY);
+        }
       }
     </script>
   </body>
