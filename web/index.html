@@ -9,10 +9,36 @@
         display: block;
         margin: 0 auto;
       }
+      #matchCard table {
+        margin: auto;
+        border-collapse: collapse;
+        font-family: Arial, sans-serif;
+        width: 80%;
+        max-width: 600px;
+      }
+      #matchCard th,
+      #matchCard td {
+        padding: 8px;
+        border: 1px solid #ccc;
+      }
+      #matchCard th {
+        background-color: #333;
+        color: #fff;
+        font-size: 24px;
+      }
+      #matchCard td {
+        background: #fff;
+        color: #000;
+      }
+      #matchCard {
+        text-align: center;
+        margin-top: 50px;
+      }
     </style>
   </head>
   <body>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="matchCard"></div>
     <script type="text/javascript" src="./eel.js"></script>
     <audio id="paddleHitSound" src="./paddle_hit.m4a"></audio>
     <script>
@@ -21,6 +47,93 @@
         const paddleHitSound = document.getElementById("paddleHitSound");
         paddleHitSound.volume = volume;
         paddleHitSound.play();
+      }
+    </script>
+    <script>
+      eel.expose(show_match_card);
+      function show_match_card(matchData) {
+        console.log("Match card data:", matchData);
+        var canvas = document.getElementById("gameCanvas");
+        var matchCardDiv = document.getElementById("matchCard");
+        if (canvas) canvas.style.display = "none";
+        matchCardDiv.style.display = "block";
+        matchCardDiv.innerHTML = "";
+
+        var table = document.createElement("table");
+
+        var headerRow = document.createElement("tr");
+        var headerCell = document.createElement("th");
+        headerCell.colSpan = 3;
+        headerCell.textContent =
+          matchData.player_name.split(" ").slice(-1)[0] +
+          " v. " +
+          matchData.opponent_name.split(" ").slice(-1)[0];
+        headerRow.appendChild(headerCell);
+        table.appendChild(headerRow);
+
+        var columnsRow = document.createElement("tr");
+        var emptyHeader = document.createElement("th");
+        emptyHeader.textContent = "";
+        columnsRow.appendChild(emptyHeader);
+
+        function addRow(label, playerAValue, playerBValue) {
+          var row = document.createElement("tr");
+
+          var labelCell = document.createElement("td");
+          labelCell.textContent = label;
+          row.appendChild(labelCell);
+
+          if (playerBValue == null) {
+            var combinedCell = document.createElement("td");
+            combinedCell.colSpan = 2;
+            combinedCell.textContent = playerAValue;
+            row.appendChild(combinedCell);
+          } else {
+            var playerACell = document.createElement("td");
+            playerACell.textContent = playerAValue;
+            row.appendChild(playerACell);
+
+            var playerBCell = document.createElement("td");
+            playerBCell.textContent = playerBValue;
+            row.appendChild(playerBCell);
+          }
+
+          table.appendChild(row);
+        }
+
+        addRow(
+          "Name",
+          matchData.player_name +
+            " " +
+            countryCodeToEmoji(matchData.player_country),
+          matchData.opponent_name +
+            " " +
+            countryCodeToEmoji(matchData.opponent_country)
+        );
+        addRow("Date of Birth", matchData.player_dob, matchData.opponent_dob);
+        addRow("Style", matchData.player_style, matchData.opponent_style);
+        addRow("Rank", matchData.player_rank, matchData.opponent_rank);
+        addRow("Total Games", matchData.total_games);
+        addRow(
+          "Win Rate",
+          Math.round(matchData.win_rate * 100) + "%",
+          Math.round(100 - matchData.win_rate * 100) + "%"
+        );
+        addRow(
+          "Head-to-Head",
+          Array.isArray(matchData.head_to_head)
+            ? matchData.head_to_head.join(", ")
+            : matchData.head_to_head
+        );
+        addRow(
+          "Avg Points Scored",
+          matchData.avg_points_scored,
+          matchData.avg_points_allowed
+        );
+
+        matchCardDiv.appendChild(table);
+
+        return true;
       }
     </script>
     <script>
@@ -33,6 +146,16 @@
         const secondChar =
           countryCode.toUpperCase().charCodeAt(1) - 65 + 0x1f1e6;
         return String.fromCodePoint(firstChar, secondChar);
+      }
+
+      function clearMatchCard() {
+        const canvas = document.getElementById("gameCanvas");
+        const matchCardDiv = document.getElementById("matchCard");
+
+        matchCardDiv.style.display = "none";
+        if (canvas) canvas.style.display = "block";
+
+        matchCardDiv.innerHTML = "";
       }
 
       eel.expose(update_pong);
@@ -54,8 +177,8 @@
         right_last_shot_speed,
         rally_counter
       ) {
-        console.log("left_player_ranking", left_player_ranking);
-        console.log("right_player_ranking", right_player_ranking);
+        clearMatchCard();
+
         var canvas = document.getElementById("gameCanvas");
         var ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, canvas.width, canvas.height);

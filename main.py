@@ -115,7 +115,7 @@ class GPTPrompts:
                     f"Average Points Scored by {h2h['player_name']} against {h2h['opponent_name']}: {h2h['avg_points_scored']}\n"
                     f"Average Points Allowed by {h2h['player_name']} against {h2h['opponent_name']}: {h2h['avg_points_allowed']}\n"
                     f"Recent Match Outcomes (from {h2h['player_name']}'s perspective - against {h2h['opponent_name']}): "
-                    f"{', '.join(h2h['head_to_head'])}\n\n"
+                    f"{h2h['head_to_head']}\n\n"
                     f"Generate a commentary opening script structured exactly as an ordered list in JSON format, with each item containing:\n"
                     f"- 'speaker': alternating strictly between 'Tony McCrae' and 'Nina Novak'\n"
                     f"- 'text': multiple consecutive sentences of commentary under one speaker before switching.\n\n"
@@ -530,6 +530,7 @@ class GameStats:
             )
             + 1
         )
+        print(head_to_head["result"].values)
 
         return {
             "player_id": player_id,
@@ -546,7 +547,7 @@ class GameStats:
             "win_rate": win_rate,
             "avg_points_scored": avg_points_scored,
             "avg_points_allowed": avg_points_allowed,
-            "head_to_head": head_to_head["result"].values,
+            "head_to_head": ", ".join(head_to_head["result"].values),
             "player_rank": player_rank,
             "opponent_rank": opponent_rank,
         }
@@ -1076,6 +1077,10 @@ class PongGame:
         self.commentary_manager.enqueue(commentary_script)
 
     async def game_loop(self):
+        eel.show_match_card(self.head_to_head_stats)
+        logger.info(f"Start the opening commentary script...")
+        await self.gpt_prompts.speak_opening_script(self.head_to_head_stats)
+
         while True:
             self.update_game()
             # invoke index.html's update_pong function
@@ -1179,9 +1184,6 @@ if __name__ == "__main__":
     head_to_head_stats = simul.head_to_head_statistics(
         sorted_players[0][0], sorted_players[1][0]
     )
-
-    # logger.info(f"Start the opening commentary script...")
-    # asyncio.run(gpt_prompts.speak_opening_script(head_to_head_stats))
 
     logger.info("Starting Pong Game...")
     PongGame().start_game(head_to_head_stats)
