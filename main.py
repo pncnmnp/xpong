@@ -137,7 +137,7 @@ class GPTPrompts:
         return chat_response
 
     def generate_in_game_commentary(
-        self, base_metrics, commentary_history, score_change=False
+        self, base_metrics, commentary_history, score_change=False, scored_by=None
     ):
         if commentary_history:
             last_speaker = commentary_history[-1].get("speaker", "")
@@ -160,14 +160,15 @@ class GPTPrompts:
         )
 
         score_change_prompt = (
-            "The score just changed; mention the new score explicitly."
-            if score_change
+            f"The score just changed to {base_metrics['left_score']} to {base_metrics['right_score']} "
+            f" and the point was scored by {scored_by}."
+            " Mention the new score explicitly."
+            if score_change and scored_by != None
             else "Don't explicitly mention the score this time."
         )
 
         color_flag = random.choices([0, 1], [0.7, 0.3])[0]
 
-        # TODO: When mentioning the new score, explicitly state which player scored the point
         messages = [
             {
                 "role": "system",
@@ -186,7 +187,25 @@ class GPTPrompts:
             {
                 "role": "user",
                 "content": (
-                    f"Base Metrics:\n{base_metrics}\n\n"
+                    f"Base Metrics:\n\n"
+                    f"{base_metrics['left_player_name']}'s score is: {base_metrics['left_score']}\n"
+                    f"{base_metrics['right_player_name']}'s score is: {base_metrics['right_score']}\n\n"
+                    f"{base_metrics['left_player_name']} is ranked world number {base_metrics['left_player_world_rank']}\n"
+                    f"{base_metrics['right_player_name']} is ranked world number {base_metrics['right_player_world_rank']}\n\n"
+                    f"{base_metrics['left_player_name']} is from {base_metrics['left_player_country']} and has a playing style of {base_metrics['left_player_style']}\n"
+                    f"{base_metrics['right_player_name']} is from {base_metrics['right_player_country']} and has a playing style of {base_metrics['right_player_style']}\n\n"
+                    f"{base_metrics['left_player_name']}'s recent shot speed: {base_metrics['recent_left_shot_speed']}\n"
+                    f"{base_metrics['right_player_name']}'s recent shot speed: {base_metrics['recent_right_shot_speed']}\n\n"
+                    f"{base_metrics['left_player_name']}'s average shot speed: {base_metrics['left_shot_speed_avg']}\n"
+                    f"{base_metrics['right_player_name']}'s average shot speed: {base_metrics['right_shot_speed_avg']}\n\n"
+                    f"{base_metrics['left_player_name']}'s recent serve speed: {base_metrics['recent_left_serve_speed']}\n"
+                    f"{base_metrics['right_player_name']}'s recent serve speed: {base_metrics['recent_right_serve_speed']}\n\n"
+                    f"{base_metrics['left_player_name']}'s average serve speed: {base_metrics['left_serve_speed_avg']}\n"
+                    f"{base_metrics['right_player_name']}'s average serve speed: {base_metrics['right_serve_speed_avg']}\n\n"
+                    f"The current rally length is: {base_metrics['recent_rally']}\n"
+                    f"The average rally length is: {base_metrics['average_rally']}\n\n"
+                    f"{base_metrics['left_player_name']}'s longest winning streak: {base_metrics['left_max_streak']}\n"
+                    f"{base_metrics['right_player_name']}'s longest winning streak: {base_metrics['right_max_streak']}\n\n"
                     f"Recent Commentary History:\n{commentary_history[-3:]}\n\n"
                     f"Color Commentary Flag: {color_flag}\n\n"
                     "Generate your next brief commentary now."
@@ -1031,8 +1050,11 @@ class PongGame:
                 data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
             )
             self.commentary_manager.flush()
+            self.last_commentary_time = (
+                time.time()
+            )  # prevents double commentary in the game loop
             asyncio.create_task(
-                self.generate_and_enqueue_commentary(score_change=True),
+                self.generate_and_enqueue_commentary(score_change=True, scored_by="R"),
             )
         elif self.ball["x"] > self.width:
             self.ball_in_play = False
@@ -1047,11 +1069,12 @@ class PongGame:
                 data=(abs(self.ball["vx"]), abs(self.ball["vy"])),
             )
             self.commentary_manager.flush()
+            self.last_commentary_time = time.time()
             asyncio.create_task(
-                self.generate_and_enqueue_commentary(score_change=True),
+                self.generate_and_enqueue_commentary(score_change=True, scored_by="L"),
             )
 
-    async def generate_and_enqueue_commentary(self, score_change=False):
+    async def generate_and_enqueue_commentary(self, score_change=False, scored_by=None):
         base_metrics = await asyncio.to_thread(self.metrics.compute_metrics, -1)
 
         base_metrics["left_player_name"] = self.head_to_head_stats["player_name"]
@@ -1067,19 +1090,27 @@ class PongGame:
             "opponent_rank"
         ]
 
+        scored_by = (
+            base_metrics["left_player_name"]
+            if scored_by == "L"
+            else (base_metrics["right_player_name"] if scored_by == "R" else None)
+        )
         commentary_script = await asyncio.to_thread(
             self.gpt_prompts.generate_in_game_commentary,
             base_metrics,
             self.commentary_history,
             score_change,
+            scored_by,
         )
         self.commentary_history.append(commentary_script)
         self.commentary_manager.enqueue(commentary_script)
 
     async def game_loop(self):
-        eel.show_match_card(self.head_to_head_stats)
-        logger.info(f"Start the opening commentary script...")
-        await self.gpt_prompts.speak_opening_script(self.head_to_head_stats)
+        NO_OPENING_SCRIPT = "--no-opening" in sys.argv
+        if not NO_OPENING_SCRIPT:
+            eel.show_match_card(self.head_to_head_stats)
+            logger.info(f"Start the opening commentary script...")
+            await self.gpt_prompts.speak_opening_script(self.head_to_head_stats)
 
         while True:
             self.update_game()
