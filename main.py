@@ -168,9 +168,17 @@ class GPTPrompts:
         score_change_prompt = (
             f"The score just changed to {base_metrics['left_score']} to {base_metrics['right_score']} "
             f" and the point was scored by {scored_by}."
-            " Mention the new score explicitly."
+            " Mention the new score explicitly.\n"
             if score_change and scored_by != None
-            else "Don't explicitly mention the score this time."
+            else "Don't explicitly mention the score this time.\n"
+        )
+
+        extra_metrics_prompt = (
+            "When incorporating extra game statistics, interpret them as follows:\n"
+            "- **Ball Bounces:** A high ball bounce count indicates an electrifying, chaotic rally where the ball ricochets off the walls, forcing players into quick, unpredictable reactions. A lower count suggests a more controlled, strategic exchange.\n"
+            "- **Shot Angles:** Calculate shot angles from the (vx, vy) vector. High angles reveal sharp and aggressive angled shots with style, whereas low angles denote straight, direct shots with powerful drives. Angles near zero mean straightforward, technical plays. Describe these attributes in colorful language rather than just stating the numbers.\n"
+            "- **Paddle Movement:** Analyze the Y-axis paddle position changes. If a player’s average paddle movement is near the top or bottom edges, it indicates riskier positioning and active defense; if the movement tends to stay near the center, it reflects a more conservative, well-positioned style with a steady and stable defensive position.\n"
+            "Blend these interpretations naturally into your commentary as you narrate the live game action."
         )
 
         color_flag = random.choices([0, 1], [0.7, 0.3])[0]
@@ -183,7 +191,7 @@ class GPTPrompts:
                     f"Generate the next short commentary snippet spoken by {speaker}. "
                     f"Provide a natural conversational flow by briefly acknowledging or reacting to what your co-commentator previously said. "
                     f"Base your commentary on the provided metrics and recent commentary history, and avoid repeating similar observations consecutively. "
-                    f"{hype_prompt} {score_change_prompt} "
+                    f"{hype_prompt} {score_change_prompt} {extra_metrics_prompt}"
                     f"If the color commentary flag is set to 1, provide creative meta-commentary about the game's strategy, player styles, or atmosphere, without relying heavily on numerical metrics. "
                     "Always keep the text under 200 characters, refer to players by first names only, and avoid excessive focus on shot and serve speeds unless highly significant. "
                     "These are the official rules for Pong game:\n"
@@ -216,7 +224,12 @@ class GPTPrompts:
                     f"{base_metrics['left_player_name']}'s average serve speed: {base_metrics['left_serve_speed_avg']}\n"
                     f"{base_metrics['right_player_name']}'s average serve speed: {base_metrics['right_serve_speed_avg']}\n\n"
                     f"The current rally length is: {base_metrics['recent_rally']}\n"
+                    f"The current ball bounce count is: {base_metrics['ball_bounce_count']}\n"
                     f"The average rally length is: {base_metrics['average_rally']}\n\n"
+                    f"{base_metrics['left_player_name']}'s average shot angle: {base_metrics['avg_left_shot_angle']}\n"
+                    f"{base_metrics['right_player_name']}'s average shot angle: {base_metrics['avg_right_shot_angle']}\n\n"
+                    f"{base_metrics['left_player_name']}'s average paddle position: {base_metrics['avg_left_paddle_movement']}\n"
+                    f"{base_metrics['right_player_name']}'s average paddle position: {base_metrics['avg_right_paddle_movement']}\n\n"
                     f"{base_metrics['left_player_name']}'s longest winning streak: {base_metrics['left_max_streak']}\n"
                     f"{base_metrics['right_player_name']}'s longest winning streak: {base_metrics['right_max_streak']}\n\n"
                     f"Recent Commentary History:\n{commentary_history[-3:]}\n\n"
@@ -225,6 +238,8 @@ class GPTPrompts:
                 ),
             },
         ]
+
+        logger.info(f"Generating in-game commentary for messages..... {messages}")
 
         chat_response = self.gpt_client.chat(messages)
         return ast.literal_eval(chat_response)
@@ -258,7 +273,7 @@ class GPTPrompts:
 
     async def speak_opening_script(self, head_to_head_stats):
         opening_script = self.generate_opening_script(head_to_head_stats)
-        print(opening_script)
+        logger.info(f"The generated opening script is..... {opening_script}")
 
         for line in opening_script:
             voice = "ballad" if line["speaker"] == "Tony McCrae" else "coral"
@@ -635,10 +650,9 @@ class MetricsCollector:
         left_score, right_score = 0, 0
         for event in self.events:
             if event["type"] == "point_scored":
-                player = event["player"]
-                if player == "L":
+                if event["player"] == "L":
                     left_score += 1
-                elif player == "R":
+                elif event["player"] == "R":
                     right_score += 1
         return left_score, right_score
 
@@ -685,12 +699,8 @@ class MetricsCollector:
     def get_recent_rally(self, events):
         rally_count = 0
         for event in events:
-            if event["type"] == "shot_speed" or event["type"] == "serve_speed":
-                player = event["player"]
-                if player == "L":
-                    rally_count += 1
-                elif player == "R":
-                    rally_count += 1
+            if event["type"] in ("shot_speed", "serve_speed"):
+                rally_count += 1
             elif event["type"] == "point_scored":
                 rally_count = 0
         return rally_count
@@ -699,12 +709,8 @@ class MetricsCollector:
         rally_count = 0
         total_rallies = []
         for event in events:
-            if event["type"] == "shot_speed" or event["type"] == "serve_speed":
-                player = event["player"]
-                if player == "L":
-                    rally_count += 1
-                elif player == "R":
-                    rally_count += 1
+            if event["type"] in ("shot_speed", "serve_speed"):
+                rally_count += 1
             elif event["type"] == "point_scored":
                 total_rallies.append(rally_count)
                 rally_count = 0
@@ -732,6 +738,51 @@ class MetricsCollector:
         if not last_shot_speed:
             return None
         return self.convert_to_scalar_speed([last_shot_speed])[0]
+
+    def get_ball_bounce_count(self, events):
+        return sum(1 for event in events if event["type"] == "ball_bounce")
+
+    def get_shot_direction_events(self, events):
+        left_dirs, right_dirs = [], []
+        for event in events:
+            if event["type"] == "shot_direction":
+                if event["player"] == "L":
+                    left_dirs.append(event["data"])
+                elif event["player"] == "R":
+                    right_dirs.append(event["data"])
+        return left_dirs, right_dirs
+
+    def average_shot_angle(self, events):
+        left_dirs, right_dirs = self.get_shot_direction_events(events)
+        left_angles = (
+            [math.degrees(math.atan2(vy, vx)) for vx, vy in left_dirs]
+            if left_dirs
+            else []
+        )
+        right_angles = (
+            [math.degrees(math.atan2(vy, vx)) for vx, vy in right_dirs]
+            if right_dirs
+            else []
+        )
+        avg_left = sum(left_angles) / len(left_angles) if left_angles else None
+        avg_right = sum(right_angles) / len(right_angles) if right_angles else None
+        return avg_left, avg_right
+
+    def get_average_paddle_movement(self, events):
+        left_moves, right_moves = [], []
+        last_left = last_right = None
+        for event in events:
+            if event["type"] == "paddle_position":
+                curr_left = event["data"].get("L")
+                curr_right = event["data"].get("R")
+                if last_left is not None:
+                    left_moves.append(abs(curr_left - last_left))
+                if last_right is not None:
+                    right_moves.append(abs(curr_right - last_right))
+                last_left, last_right = curr_left, curr_right
+        avg_left = sum(left_moves) / len(left_moves) if left_moves else None
+        avg_right = sum(right_moves) / len(right_moves) if right_moves else None
+        return avg_left, avg_right
 
     def compute_metrics(self, past_seconds):
         # Compute metrics based on the recorded events
@@ -800,6 +851,12 @@ class MetricsCollector:
         all_rallies = self.get_all_rally(events)
         average_rally = sum(all_rallies) / len(all_rallies) if all_rallies else None
 
+        ball_bounce_count = self.get_ball_bounce_count(events)
+        avg_left_shot_angle, avg_right_shot_angle = self.average_shot_angle(events)
+        avg_left_paddle_movement, avg_right_paddle_movement = (
+            self.get_average_paddle_movement(events)
+        )
+
         return {
             "left_score": left_score,
             "right_score": right_score,
@@ -815,6 +872,11 @@ class MetricsCollector:
             "right_max_streak": right_max_streak,
             "average_rally": average_rally,
             "recent_rally": recent_rally,
+            "ball_bounce_count": ball_bounce_count,
+            "avg_left_shot_angle": avg_left_shot_angle,
+            "avg_right_shot_angle": avg_right_shot_angle,
+            "avg_left_paddle_movement": avg_left_paddle_movement,
+            "avg_right_paddle_movement": avg_right_paddle_movement,
         }
 
 
@@ -1034,6 +1096,11 @@ class PongGame:
                     "R": self.right_paddle["y"],
                 },
             )
+            self.metrics.record_event(
+                event_type="shot_direction",
+                player="L",
+                data=(self.ball["vx"], self.ball["vy"]),
+            )
             self.play_paddle_shot_sound()
 
         # ball hitting the right paddle
@@ -1062,6 +1129,11 @@ class PongGame:
                     "L": self.left_paddle["y"],
                     "R": self.right_paddle["y"],
                 },
+            )
+            self.metrics.record_event(
+                event_type="shot_direction",
+                player="R",
+                data=(self.ball["vx"], self.ball["vy"]),
             )
             self.play_paddle_shot_sound()
 
