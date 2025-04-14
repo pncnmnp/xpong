@@ -91,11 +91,15 @@ class GPTPrompts:
             {
                 "role": "system",
                 "content": (
-                    "You are an insightful and engaging sports commentator assistant. "
+                    "You are an insightful and engaging sports commentator assistant for this Pong World Championship Final matchup. "
                     "You always return structured, clear, and realistic commentary in JSON format, "
                     "as an ordered list of turns. Each turn must be represented as an object with two keys: "
                     "'speaker' (alternating strictly between 'Tony McCrae' and 'Nina Novak') and 'text' (the commentary). "
                     "Allow each speaker to speak multiple consecutive sentences in a single turn before switching to the other. "
+                    "These are the official rules for Pong game:\n"
+                    "1. First player to 21 points wins immediately.\n"
+                    "2. One point awarded per missed ball.\n"
+                    "3. The player who loses the point serves next.\n"
                     "Never use markdown formatting or additional explanations in the JSON response."
                 ),
             },
@@ -106,6 +110,8 @@ class GPTPrompts:
                     f"Player ID: {h2h['player_id']} vs Opponent ID: {h2h['opponent_id']}\n"
                     f"Player Names: {h2h['player_name']} vs {h2h['opponent_name']}\n"
                     f"Player Ranks: World Number {h2h['player_rank']} vs World Number {h2h['opponent_rank']}\n"
+                    f"Player World Cup Wins: {h2h['player_wc_wins']} vs {h2h['opponent_wc_wins']}\n"
+                    f"Player World Cup Runner-ups: {h2h['player_wc_runner_up']} vs {h2h['opponent_wc_runner_up']}\n"
                     f"Countries: {h2h['player_country']} vs {h2h['opponent_country']}\n"
                     f"Dates of Birth: {h2h['player_dob']} vs {h2h['opponent_dob']}\n"
                     f"Playing Styles: {h2h['player_style']} vs {h2h['opponent_style']}\n"
@@ -173,13 +179,17 @@ class GPTPrompts:
             {
                 "role": "system",
                 "content": (
-                    f"You are a sports commentator assistant for an ongoing Pong game. "
+                    f"You are a sports commentator assistant for an ongoing Pong World Championship Final game. "
                     f"Generate the next short commentary snippet spoken by {speaker}. "
                     f"Provide a natural conversational flow by briefly acknowledging or reacting to what your co-commentator previously said. "
                     f"Base your commentary on the provided metrics and recent commentary history, and avoid repeating similar observations consecutively. "
                     f"{hype_prompt} {score_change_prompt} "
                     f"If the color commentary flag is set to 1, provide creative meta-commentary about the game's strategy, player styles, or atmosphere, without relying heavily on numerical metrics. "
                     "Always keep the text under 200 characters, refer to players by first names only, and avoid excessive focus on shot and serve speeds unless highly significant. "
+                    "These are the official rules for Pong game:\n"
+                    "1. First player to 21 points wins immediately.\n"
+                    "2. One point awarded per missed ball.\n"
+                    "3. The player who loses the point serves next.\n"
                     "Never include markdown or explanations outside the JSON response. "
                     "Return the commentary as a JSON object with keys 'speaker' and 'text'."
                 ),
@@ -187,6 +197,9 @@ class GPTPrompts:
             {
                 "role": "user",
                 "content": (
+                    "This is a World Championship Final game."
+                    f"{base_metrics['left_player_name']} has previously won the world championship {base_metrics['left_player_wc_wins']} times and "
+                    f"{base_metrics['right_player_name']} has previously won the world championship {base_metrics['right_player_wc_wins']} times.\n"
                     f"Base Metrics:\n\n"
                     f"{base_metrics['left_player_name']}'s score is: {base_metrics['left_score']}\n"
                     f"{base_metrics['right_player_name']}'s score is: {base_metrics['right_score']}\n\n"
@@ -549,7 +562,19 @@ class GameStats:
             )
             + 1
         )
-        print(head_to_head["result"].values)
+
+        player_wins = len(
+            self.tournament_stats[self.tournament_stats["winner_id"] == player_id]
+        )
+        opponent_wins = len(
+            self.tournament_stats[self.tournament_stats["winner_id"] == opponent_id]
+        )
+        player_runner_up = len(
+            self.tournament_stats[self.tournament_stats["runner_up_id"] == player_id]
+        )
+        opponent_runner_up = len(
+            self.tournament_stats[self.tournament_stats["runner_up_id"] == opponent_id]
+        )
 
         return {
             "player_id": player_id,
@@ -569,6 +594,10 @@ class GameStats:
             "head_to_head": ", ".join(head_to_head["result"].values),
             "player_rank": player_rank,
             "opponent_rank": opponent_rank,
+            "player_wc_wins": player_wins,
+            "opponent_wc_wins": opponent_wins,
+            "player_wc_runner_up": player_runner_up,
+            "opponent_wc_runner_up": opponent_runner_up,
         }
 
 
@@ -840,7 +869,7 @@ class PongGame:
         eel.init("./web")
 
         self.gpt_prompts = GPTPrompts()
-        self.head_to_head_stats = None
+        self.h2h_stats = None
         self.last_commentary_time = None
         self.last_metrics_snapshot = None
         self.commentary_manager = CommentaryManager(self.gpt_prompts)
@@ -1077,18 +1106,20 @@ class PongGame:
     async def generate_and_enqueue_commentary(self, score_change=False, scored_by=None):
         base_metrics = await asyncio.to_thread(self.metrics.compute_metrics, -1)
 
-        base_metrics["left_player_name"] = self.head_to_head_stats["player_name"]
-        base_metrics["right_player_name"] = self.head_to_head_stats["opponent_name"]
-        base_metrics["left_player_style"] = self.head_to_head_stats["player_style"]
-        base_metrics["right_player_style"] = self.head_to_head_stats["opponent_style"]
-        base_metrics["left_player_country"] = self.head_to_head_stats["player_country"]
-        base_metrics["right_player_country"] = self.head_to_head_stats[
-            "opponent_country"
+        base_metrics["left_player_name"] = self.h2h_stats["player_name"]
+        base_metrics["right_player_name"] = self.h2h_stats["opponent_name"]
+        base_metrics["left_player_wc_wins"] = self.h2h_stats["player_wc_wins"]
+        base_metrics["right_player_wc_wins"] = self.h2h_stats["opponent_wc_wins"]
+        base_metrics["left_player_wc_runner_up"] = self.h2h_stats["player_wc_runner_up"]
+        base_metrics["right_player_wc_runner_up"] = self.h2h_stats[
+            "opponent_wc_runner_up"
         ]
-        base_metrics["left_player_world_rank"] = self.head_to_head_stats["player_rank"]
-        base_metrics["right_player_world_rank"] = self.head_to_head_stats[
-            "opponent_rank"
-        ]
+        base_metrics["left_player_style"] = self.h2h_stats["player_style"]
+        base_metrics["right_player_style"] = self.h2h_stats["opponent_style"]
+        base_metrics["left_player_country"] = self.h2h_stats["player_country"]
+        base_metrics["right_player_country"] = self.h2h_stats["opponent_country"]
+        base_metrics["left_player_world_rank"] = self.h2h_stats["player_rank"]
+        base_metrics["right_player_world_rank"] = self.h2h_stats["opponent_rank"]
 
         scored_by = (
             base_metrics["left_player_name"]
@@ -1108,9 +1139,9 @@ class PongGame:
     async def game_loop(self):
         NO_OPENING_SCRIPT = "--no-opening" in sys.argv
         if not NO_OPENING_SCRIPT:
-            eel.show_match_card(self.head_to_head_stats)
+            eel.show_match_card(self.h2h_stats)
             logger.info(f"Start the opening commentary script...")
-            await self.gpt_prompts.speak_opening_script(self.head_to_head_stats)
+            await self.gpt_prompts.speak_opening_script(self.h2h_stats)
 
         while True:
             self.update_game()
@@ -1123,12 +1154,12 @@ class PongGame:
                 self.right_score,
                 self.width,
                 self.height,
-                self.head_to_head_stats["player_name"],
-                self.head_to_head_stats["opponent_name"],
-                self.head_to_head_stats["player_rank"],
-                self.head_to_head_stats["opponent_rank"],
-                self.head_to_head_stats["player_country"],
-                self.head_to_head_stats["opponent_country"],
+                self.h2h_stats["player_name"],
+                self.h2h_stats["opponent_name"],
+                self.h2h_stats["player_rank"],
+                self.h2h_stats["opponent_rank"],
+                self.h2h_stats["player_country"],
+                self.h2h_stats["opponent_country"],
                 self.metrics.shot_to_scalar_speed(self.left_last_shot_speed),
                 self.metrics.shot_to_scalar_speed(self.right_last_shot_speed),
                 self.rally_count,
@@ -1144,7 +1175,7 @@ class PongGame:
             await asyncio.sleep(self.game_speed)
 
     def start_game(self, head_to_head_stats):
-        self.head_to_head_stats = head_to_head_stats
+        self.h2h_stats = head_to_head_stats
 
         def start_eel():
             eel.start(

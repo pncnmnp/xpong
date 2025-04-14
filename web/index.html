@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <title>Pong Game</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap"
+      rel="stylesheet"
+    />
     <style>
       canvas {
         background: #000;
@@ -12,13 +16,14 @@
       #matchCard table {
         margin: auto;
         border-collapse: collapse;
-        font-family: Arial, sans-serif;
-        width: 80%;
-        max-width: 600px;
+        font-family: "Bebas Neue", Arial, sans-serif;
+        font-size: 20px;
+        width: 100%;
+        max-width: 700px;
       }
       #matchCard th,
       #matchCard td {
-        padding: 8px;
+        padding: 4px;
         border: 1px solid #ccc;
       }
       #matchCard th {
@@ -60,6 +65,14 @@
         matchCardDiv.innerHTML = "";
 
         var table = document.createElement("table");
+
+        var headerRow = document.createElement("tr");
+        var headerCell = document.createElement("th");
+        headerCell.colSpan = 3;
+        headerCell.textContent =
+          "World Championship " + new Date().getFullYear();
+        headerRow.appendChild(headerCell);
+        table.appendChild(headerRow);
 
         var headerRow = document.createElement("tr");
         var headerCell = document.createElement("th");
@@ -113,6 +126,16 @@
         addRow("Date of Birth", matchData.player_dob, matchData.opponent_dob);
         addRow("Style", matchData.player_style, matchData.opponent_style);
         addRow("Rank", matchData.player_rank, matchData.opponent_rank);
+        addRow(
+          "World Championships",
+          matchData.player_wc_wins,
+          matchData.opponent_wc_wins
+        );
+        addRow(
+          "Runners Up",
+          matchData.player_wc_runner_up,
+          matchData.opponent_wc_runner_up
+        );
         addRow("Total Games", matchData.total_games);
         addRow(
           "Win Rate",
