@@ -749,7 +749,13 @@ class MetricsCollector:
         return self.convert_to_scalar_speed([last_shot_speed])[0]
 
     def get_ball_bounce_count(self, events):
-        return sum(1 for event in events if event["type"] == "ball_bounce")
+        ball_bounce_count = 0
+        for event in events:
+            if event["type"] == "ball_bounce":
+                ball_bounce_count += 1
+            elif event["type"] == "point_scored":
+                ball_bounce_count = 0
+        return ball_bounce_count
 
     def get_shot_direction_events(self, events):
         left_dirs, right_dirs = [], []
