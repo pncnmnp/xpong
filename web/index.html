@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Pong Game</title>
+    <title>PX-1972</title>
     <link
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap"
       rel="stylesheet"
@@ -232,9 +232,8 @@
           right_paddle.height
         );
 
-        const cellPadding = 10;
         const colWidths = [40, 40, 140, 40, 100];
-        const rowHeight = 25;
+        const rowHeight = 30;
         const tableWidth = colWidths.reduce((a, b) => a + b, 0);
         const tableHeight = rowHeight * 2;
 
@@ -264,7 +263,7 @@
         ctx.stroke();
 
         ctx.fillStyle = "#fff";
-        ctx.font = "16px Arial";
+        ctx.font = "18px Bebas Neue";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
@@ -298,7 +297,7 @@
           cellCenterY
         );
 
-        cellCenterY = tableY + rowHeight + rowHeight / 2;
+        cellCenterY = tableY + rowHeight + rowHeight / 1.8;
         const rightFlag = countryCodeToEmoji(right_player_country);
         ctx.fillText(rightFlag, col0Center, cellCenterY);
         ctx.fillText(right_player_ranking, col1Center, cellCenterY);
@@ -329,7 +328,7 @@
           ctx.lineTo(dividerX, tableY + tableHeight);
           ctx.stroke();
 
-          ctx.font = "16px Arial";
+          ctx.font = "18px Bebas Neue";
           ctx.fillStyle = "#fff";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
