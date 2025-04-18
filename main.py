@@ -285,14 +285,23 @@ class CommentaryManager:
         self.gpt_prompts = gpt_prompts
         self.latest_commentary = None
         self.processing_task = None
+        # Reproducible shuffle for filler files
+        self.filler_index = 0
+        self.seed = random.randint(0, 100)
+        self.random_inst = random.Random(self.seed)
 
     def speak_filler(self):
-        filler_files = [
-            file for file in os.listdir("./assets/fillers") if file.endswith(".mp3")
-        ]
+        # To get the maximum diversity of filler files, we wont be doing a random choice
+        # Instead, we will be using a round robin approach
+        filler_files = sorted(
+            [file for file in os.listdir("./assets/fillers") if file.endswith(".mp3")]
+        )
+        self.random_inst.shuffle(filler_files)
+
         if filler_files:
-            random_file = random.choice(filler_files)
-            file_path = os.path.join("./assets/fillers", random_file)
+            filler_file = filler_files[self.filler_index]
+            self.filler_index = (self.filler_index + 1) % len(filler_files)
+            file_path = os.path.join("./assets/fillers", filler_file)
             os.system(f"mpg123 {file_path}")
 
     def flush(self):
