@@ -181,6 +181,41 @@
         matchCardDiv.innerHTML = "";
       }
 
+      function displayMetric(
+        ctx,
+        tableX,
+        tableY,
+        tableWidth,
+        tableHeight,
+        text,
+        counter
+      ) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(tableX, tableY, tableWidth, tableHeight);
+
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(tableX, tableY, tableWidth, tableHeight);
+
+        const dividerX = tableX + tableWidth / 2;
+        ctx.beginPath();
+        ctx.moveTo(dividerX, tableY);
+        ctx.lineTo(dividerX, tableY + tableHeight);
+        ctx.stroke();
+
+        ctx.font = "18px Bebas Neue";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        const leftCellCenterX = tableX + tableWidth / 4;
+        const rightCellCenterX = tableX + (3 * tableWidth) / 4;
+        const cellCenterY = tableY + tableHeight / 1.8;
+
+        ctx.fillText(text, leftCellCenterX, cellCenterY);
+        ctx.fillText(counter, rightCellCenterX, cellCenterY);
+      }
+
       eel.expose(update_pong);
       function update_pong(
         ball,
@@ -198,7 +233,8 @@
         right_player_country,
         left_last_shot_speed,
         right_last_shot_speed,
-        rally_counter
+        rally_counter,
+        ball_bounce_counter
       ) {
         clearMatchCard();
 
@@ -315,31 +351,34 @@
           const tableX = canvas.width / 2 + canvas.width / 4 - 30;
           const tableY = canvas.height - 50;
 
-          ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-          ctx.fillRect(tableX, tableY, tableWidth, tableHeight);
-
-          ctx.strokeStyle = "#fff";
-          ctx.lineWidth = 2;
-          ctx.strokeRect(tableX, tableY, tableWidth, tableHeight);
-
-          const dividerX = tableX + tableWidth / 2;
-          ctx.beginPath();
-          ctx.moveTo(dividerX, tableY);
-          ctx.lineTo(dividerX, tableY + tableHeight);
-          ctx.stroke();
-
-          ctx.font = "18px Bebas Neue";
-          ctx.fillStyle = "#fff";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-
-          const leftCellCenterX = tableX + tableWidth / 4;
-          const rightCellCenterX = tableX + (3 * tableWidth) / 4;
-          const cellCenterY = tableY + tableHeight / 1.8;
-
-          ctx.fillText("Rally", leftCellCenterX, cellCenterY);
-          ctx.fillText(rally_counter, rightCellCenterX, cellCenterY);
+          displayMetric(
+            ctx,
+            tableX,
+            tableY,
+            tableWidth,
+            tableHeight,
+            "Rally",
+            rally_counter
+          );
         }
+
+        if (ball_bounce_counter > 0) {
+          const tableWidth = 120;
+          const tableHeight = 30;
+          const tableX = canvas.width / 2 + canvas.width / 4 - 160;
+          const tableY = canvas.height - 50;
+
+          displayMetric(
+            ctx,
+            tableX,
+            tableY,
+            tableWidth,
+            tableHeight,
+            "Bounces",
+            ball_bounce_counter
+          );
+        }
+        return true;
       }
     </script>
   </body>

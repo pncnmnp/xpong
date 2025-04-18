@@ -145,6 +145,14 @@ class GPTPrompts:
     def generate_in_game_commentary(
         self, base_metrics, commentary_history, score_change=False, scored_by=None
     ):
+        # TODO: Add commentary on aces
+        # TODO: Mention that the rally is ongoing
+        # TODO: Pick up on previous context after an interruption
+        # TODO: Mention the quarter, mid-way point, and end of the game
+        # TODO: Find out similar historical matches of the same players, and refer to them
+        # TODO: Summary on how these two got so far in the tournament
+        # TODO: Cause of network-bound latency,
+        #           mention aggregate like 30+ bounces, instead of 33 bounces or something
         if commentary_history:
             last_speaker = commentary_history[-1].get("speaker", "")
             speaker = "Tony McCrae" if last_speaker == "Nina Novak" else "Nina Novak"
@@ -174,11 +182,23 @@ class GPTPrompts:
         )
 
         extra_metrics_prompt = (
-            "When incorporating extra game statistics, interpret them as follows:\n"
-            "- **Ball Bounces:** A high ball bounce count indicates an electrifying, chaotic rally where the ball ricochets off the walls, forcing players into quick, unpredictable reactions. A lower count suggests a more controlled, strategic exchange.\n"
-            "- **Shot Angles:** Calculate shot angles from the (vx, vy) vector. High angles reveal sharp and aggressive angled shots with style, whereas low angles denote straight, direct shots with powerful drives. Angles near zero mean straightforward, technical plays. Describe these attributes in colorful language rather than just stating the numbers.\n"
-            "- **Paddle Movement:** Analyze the Y-axis paddle position changes. If a player’s average paddle movement is near the top or bottom edges, it indicates riskier positioning and active defense; if the movement tends to stay near the center, it reflects a more conservative, well-positioned style with a steady and stable defensive position.\n"
-            "Blend these interpretations naturally into your commentary as you narrate the live game action."
+            "When weaving extra game statistics into your commentary, interpret them like this:\n"
+            "- **Ball Bounces:** A high bounce count signals an electrifying, unpredictable rally with the ball ricocheting wildly off the walls, forcing players into quick, unpredictable reactions; a low count points to a controlled, tactical duel where each shot is carefully placed.\n"
+            "- **Shot Angles:** Derive each shot's angle from the (vx, vy) vector:\n"
+            "    • Steep angles (>45°) become daring corner lobs or sharp cross-courts.\n"
+            "    • Moderate angles (15°-45°) look like graceful arcs that test court coverage.\n"
+            "    • Shallow angles (<15°) play out as direct, flat drives down the line.\n"
+            "  Vary your wording—mix in sports metaphors, court imagery, or player-centric comparisons rather than citing raw numbers.\n"
+            "- **Shot Speed:** Classify by mph without prescribing exact phrases:\n"
+            "    • >90 mph = a true blistering pace.\n"
+            "    • 75-90 mph = a solid mid-range drive.\n"
+            "    • <75 mph = a crafty slow-ball or change-up.\n"
+            "  But don't reuse the same adjective—rotate through metaphors, analogies, or fresh descriptors to keep the narrative vibrant.\n"
+            "- **Paddle Movement:** Measure average Y-axis shifts:\n"
+            "    • Movements near the top/bottom edges show aggressive table coverage.\n"
+            "    • Movements clustered near center reflect a steady, textbook defensive stance.\n"
+            "  Illustrate these actions with varied imagery—mention agility, court geography, or player posture to enrich the play-by-play.\n\n"
+            "Blend these interpretations naturally into the flow, using diverse language choices so each mention feels original and engaging."
         )
 
         color_flag = random.choices([0, 1], [0.7, 0.3])[0]
@@ -287,20 +307,18 @@ class CommentaryManager:
         self.processing_task = None
         # Reproducible shuffle for filler files
         self.filler_index = 0
-        self.seed = random.randint(0, 100)
-        self.random_inst = random.Random(self.seed)
+        self.random_inst = random.Random(random.randint(0, 100))
+        self.filler_files = sorted(
+            [file for file in os.listdir("./assets/fillers") if file.endswith(".mp3")]
+        )
+        self.random_inst.shuffle(self.filler_files)
 
     def speak_filler(self):
         # To get the maximum diversity of filler files, we wont be doing a random choice
         # Instead, we will be using a round robin approach
-        filler_files = sorted(
-            [file for file in os.listdir("./assets/fillers") if file.endswith(".mp3")]
-        )
-        self.random_inst.shuffle(filler_files)
-
-        if filler_files:
-            filler_file = filler_files[self.filler_index]
-            self.filler_index = (self.filler_index + 1) % len(filler_files)
+        if self.filler_files:
+            filler_file = self.filler_files[self.filler_index]
+            self.filler_index = (self.filler_index + 1) % len(self.filler_files)
             file_path = os.path.join("./assets/fillers", filler_file)
             os.system(f"mpg123 {file_path}")
 
@@ -933,6 +951,7 @@ class PongGame:
         self.right_score = 0
 
         self.rally_count = 0
+        self.ball_bounce_count = 0
         self.last_shot_player = None
 
         self.left_last_shot_speed = None
@@ -1060,6 +1079,7 @@ class PongGame:
             or self.ball["y"] + self.ball["radius"] >= self.height
         ):
             self.metrics.record_event(event_type="ball_bounce")
+            self.ball_bounce_count += 1
             self.ball["vy"] *= -1
 
         # AI paddle movement for left paddle
@@ -1157,6 +1177,7 @@ class PongGame:
             self.ball_in_play = False
             self.right_score += 1
             self.rally_count = 1  # to account for the serve
+            self.ball_bounce_count = 0
             self.last_shot_player = None
             self.metrics.record_event(event_type="point_scored", player="R")
             asyncio.create_task(self.reset_ball(direction=1))
@@ -1176,6 +1197,7 @@ class PongGame:
             self.ball_in_play = False
             self.left_score += 1
             self.rally_count = 1
+            self.ball_bounce_count = 0
             self.last_shot_player = None
             self.metrics.record_event(event_type="point_scored", player="L")
             asyncio.create_task(self.reset_ball(direction=-1))
@@ -1250,6 +1272,7 @@ class PongGame:
                 self.metrics.shot_to_scalar_speed(self.left_last_shot_speed),
                 self.metrics.shot_to_scalar_speed(self.right_last_shot_speed),
                 self.rally_count,
+                self.ball_bounce_count,
             )
             current_time = time.time()
             if (
