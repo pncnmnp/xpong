@@ -147,17 +147,46 @@ class GPTPrompts:
     ):
         # TODO: Add commentary on aces
         # TODO: Mention that the rally is ongoing
-        # TODO: Pick up on previous context after an interruption
-        # TODO: Mention the quarter, mid-way point, and end of the game
         # TODO: Find out similar historical matches of the same players, and refer to them
         # TODO: Summary on how these two got so far in the tournament
-        # TODO: Cause of network-bound latency,
-        #           mention aggregate like 30+ bounces, instead of 33 bounces or something
         if commentary_history:
             last_speaker = commentary_history[-1].get("speaker", "")
             speaker = "Tony McCrae" if last_speaker == "Nina Novak" else "Nina Novak"
         else:
             speaker = random.choice(["Tony McCrae", "Nina Novak"])
+
+        # How far back do we want to show the history?
+        COMM_HISTORY_LENGTH = 5
+        recent_history = list(reversed(commentary_history[-COMM_HISTORY_LENGTH:]))
+        recent_history = (
+            "\n".join(
+                [f"{i}. {recent_history[i]}\n" for i in range(len(recent_history))]
+            )
+            if recent_history
+            else "No previous commentary available.\n"
+        )
+
+        l, r = base_metrics["left_score"], base_metrics["right_score"]
+        if l == r == 20:
+            match_stage = "Match Stage: Sudden-death — championship point either way; every heartbeat echoes in the hall."
+        elif l >= 20:
+            match_stage = f"Match Stage: Championship point for {base_metrics['left_player_name']} — one clean strike could end it."
+        elif r >= 20:
+            match_stage = f"Match Stage: Championship point for {base_metrics['right_player_name']} — a single winner seals the crown."
+        elif max(l, r) >= 15:
+            match_stage = f"Match Stage: Final quarter — tension thick, each rally feels worth two."
+        elif max(l, r) >= 10:
+            match_stage = (
+                "Match Stage: Midway battle — momentum teeters, nerves tighten."
+            )
+        elif max(l, r) >= 5:
+            match_stage = (
+                "Match Stage: First quarter — early sparring for scoreboard control."
+            )
+        else:
+            match_stage = (
+                "Match Stage: Opening exchanges — players probing for weaknesses."
+            )
 
         # Determine if hype is required
         long_rally = base_metrics["recent_rally"] and base_metrics["recent_rally"] >= 6
@@ -178,7 +207,7 @@ class GPTPrompts:
             f" and the point was scored by {scored_by}."
             " Mention the new score explicitly.\n"
             if score_change and scored_by != None
-            else "Don't explicitly mention the score this time.\n"
+            else "Don't explicitly mention the score this time. The rally is still ongoing.\n"
         )
 
         extra_metrics_prompt = (
@@ -199,6 +228,7 @@ class GPTPrompts:
             "    • Movements clustered near center reflect a steady, textbook defensive stance.\n"
             "  Illustrate these actions with varied imagery—mention agility, court geography, or player posture to enrich the play-by-play.\n\n"
             "Blend these interpretations naturally into the flow, using diverse language choices so each mention feels original and engaging."
+            "**Important:** Never mention exact numeric values for game metrics like ball bounces, rally counts, shot angles, speeds, or paddle movements. Always provide rounded, approximate aggregates, such as '30+ bounces', '20 plus shots', or 'speeds over 90 mph', to maintain natural commentary flow."
         )
 
         color_flag = random.choices([0, 1], [0.7, 0.3])[0]
@@ -212,8 +242,10 @@ class GPTPrompts:
                     f"Provide a natural conversational flow by briefly acknowledging or reacting to what your co-commentator previously said. "
                     f"Base your commentary on the provided metrics and recent commentary history, and avoid repeating similar observations consecutively. "
                     f"{hype_prompt} {score_change_prompt} {extra_metrics_prompt}"
+                    f"The game is currently in the {match_stage}.\n"
                     f"If the color commentary flag is set to 1, provide creative meta-commentary about the game's strategy, player styles, or atmosphere, without relying heavily on numerical metrics. "
                     "Always keep the text under 200 characters, refer to players by first names only, and avoid excessive focus on shot and serve speeds unless highly significant. "
+                    "**After a score change interruption**, smoothly pick up and continue the commentary based directly on the most recent statements from your co-commentator. Explicitly acknowledge or react briefly to what was previously mentioned, maintaining a cohesive, uninterrupted conversational flow."
                     "These are the official rules for Pong game:\n"
                     "1. First player to 21 points wins immediately.\n"
                     "2. One point awarded per missed ball.\n"
@@ -252,7 +284,8 @@ class GPTPrompts:
                     f"{base_metrics['right_player_name']}'s average paddle position: {base_metrics['avg_right_paddle_movement']}\n\n"
                     f"{base_metrics['left_player_name']}'s longest winning streak: {base_metrics['left_max_streak']}\n"
                     f"{base_metrics['right_player_name']}'s longest winning streak: {base_metrics['right_max_streak']}\n\n"
-                    f"Recent Commentary History:\n{commentary_history[-3:]}\n\n"
+                    "The Recent Commentary History provided below is ordered with the **most recent commentary first**.\n"
+                    f"Recent Commentary History:\n{recent_history}\n\n"
                     f"Color Commentary Flag: {color_flag}\n\n"
                     "Generate your next brief commentary now."
                 ),
@@ -260,8 +293,10 @@ class GPTPrompts:
         ]
 
         logger.info(f"Generating in-game commentary for messages..... {messages}")
-
         chat_response = self.gpt_client.chat(messages)
+        logger.info(
+            f"\033[91mChat response for in-game commentary is..... {chat_response}\033[0m"
+        )
         return ast.literal_eval(chat_response)
 
     async def speak(self, input, voice):
