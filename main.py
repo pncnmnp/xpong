@@ -1324,7 +1324,7 @@ class PongGame:
             current_time = time.time()
             if (
                 self.last_commentary_time is None
-                or current_time - self.last_commentary_time > 10
+                or current_time - self.last_commentary_time > 20
             ):
                 self.last_commentary_time = current_time
                 asyncio.create_task(self.generate_and_enqueue_commentary())
