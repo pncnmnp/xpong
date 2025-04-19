@@ -336,7 +336,7 @@ class GPTPrompts:
 
 
 class CommentaryManager:
-    def __init__(self, gpt_prompts):
+    def __init__(self, gpt_prompts: GPTPrompts):
         self.gpt_prompts = gpt_prompts
         self.latest_commentary = None
         self.processing_task = None
@@ -347,6 +347,8 @@ class CommentaryManager:
             [file for file in os.listdir("./assets/fillers") if file.endswith(".mp3")]
         )
         self.random_inst.shuffle(self.filler_files)
+        # We only log history, when speech is synthetized on it
+        self.commentary_history = []
 
     def speak_filler(self):
         # To get the maximum diversity of filler files, we wont be doing a random choice
@@ -372,6 +374,7 @@ class CommentaryManager:
     async def process_latest(self):
         while self.latest_commentary is not None:
             commentary = self.latest_commentary
+            self.commentary_history.append(commentary)
             self.latest_commentary = None
             await self.gpt_prompts.speak_in_game_commentary(commentary)
 
@@ -1005,7 +1008,6 @@ class PongGame:
         self.last_commentary_time = None
         self.last_metrics_snapshot = None
         self.commentary_manager = CommentaryManager(self.gpt_prompts)
-        self.commentary_history = []
 
         self.paused = False
 
@@ -1279,11 +1281,10 @@ class PongGame:
         commentary_script = await asyncio.to_thread(
             self.gpt_prompts.generate_in_game_commentary,
             base_metrics,
-            self.commentary_history,
+            self.commentary_manager.commentary_history,
             score_change,
             scored_by,
         )
-        self.commentary_history.append(commentary_script)
         self.commentary_manager.enqueue(commentary_script)
 
     async def game_loop(self):
