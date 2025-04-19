@@ -156,7 +156,7 @@ class GPTPrompts:
             speaker = random.choice(["Tony McCrae", "Nina Novak"])
 
         # How far back do we want to show the history?
-        COMM_HISTORY_LENGTH = 5
+        COMM_HISTORY_LENGTH = 10
         recent_history = list(reversed(commentary_history[-COMM_HISTORY_LENGTH:]))
         recent_history = (
             "\n".join(
@@ -231,6 +231,15 @@ class GPTPrompts:
             "**Important:** Never mention exact numeric values for game metrics like ball bounces, rally counts, shot angles, speeds, or paddle movements. Always provide rounded, approximate aggregates, such as '30+ bounces', '20 plus shots', or 'speeds over 90 mph', to maintain natural commentary flow."
         )
 
+        non_repetition_prompt = (
+            "\n**Narrative variation rule:** Before writing, scan the recent commentary "
+            "history below (most-recent first). Do **not** repeat a phrase, opener, "
+            "or adjective that already appears there (e.g. avoid re-using 'Absolutely', "
+            "'What a rally', 'atmosphere is electric', 'tension is palpable', etc.). "
+            "Vary synonyms, sentence structure, and limit exclamation marks to **one** "
+            "per snippet to keep the commentary fresh.\n"
+        )
+
         color_flag = random.choices([0, 1], [0.7, 0.3])[0]
 
         messages = [
@@ -241,7 +250,7 @@ class GPTPrompts:
                     f"Generate the next short commentary snippet spoken by {speaker}. "
                     f"Provide a natural conversational flow by briefly acknowledging or reacting to what your co-commentator previously said. "
                     f"Base your commentary on the provided metrics and recent commentary history, and avoid repeating similar observations consecutively. "
-                    f"{hype_prompt} {score_change_prompt} {extra_metrics_prompt}"
+                    f"{hype_prompt} {score_change_prompt} {extra_metrics_prompt} {non_repetition_prompt}"
                     f"The game is currently in the {match_stage}.\n"
                     f"If the color commentary flag is set to 1, provide creative meta-commentary about the game's strategy, player styles, or atmosphere, without relying heavily on numerical metrics. "
                     "Always keep the text under 200 characters, refer to players by first names only, and avoid excessive focus on shot and serve speeds unless highly significant. "
@@ -285,7 +294,7 @@ class GPTPrompts:
                     f"{base_metrics['left_player_name']}'s longest winning streak: {base_metrics['left_max_streak']}\n"
                     f"{base_metrics['right_player_name']}'s longest winning streak: {base_metrics['right_max_streak']}\n\n"
                     "The Recent Commentary History provided below is ordered with the **most recent commentary first**.\n"
-                    f"Recent Commentary History:\n{recent_history}\n\n"
+                    f"Recent Commentary History (most‑recent first):\n{recent_history}\n\n"
                     f"Color Commentary Flag: {color_flag}\n\n"
                     "Generate your next brief commentary now."
                 ),
