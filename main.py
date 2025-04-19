@@ -357,11 +357,12 @@ class CommentaryManager:
             file_path = os.path.join("./assets/fillers", filler_file)
             os.system(f"mpg123 {file_path}")
 
-    def flush(self):
+    def flush(self, no_filler=False):
         if self.processing_task is not None and not self.processing_task.done():
             self.processing_task.cancel()
             self.latest_commentary = None
-            self.processing_task.add_done_callback(lambda _: self.speak_filler())
+            if not no_filler:
+                self.processing_task.add_done_callback(lambda _: self.speak_filler())
 
     def enqueue(self, commentary_script):
         self.latest_commentary = commentary_script
@@ -1006,6 +1007,8 @@ class PongGame:
         self.commentary_manager = CommentaryManager(self.gpt_prompts)
         self.commentary_history = []
 
+        self.paused = False
+
     def init_ball(self, direction):
         # If left side just lost, we serve on left side
         if direction == 1:
@@ -1102,6 +1105,9 @@ class PongGame:
                 paddle["y"] -= paddle["speed"]
 
     def update_game(self):
+        if self.paused:
+            return
+
         if not self.ball_in_play:
             return
 
@@ -1288,6 +1294,11 @@ class PongGame:
             await self.gpt_prompts.speak_opening_script(self.h2h_stats)
 
         while True:
+            if self.paused:
+                # minimal ticking
+                await asyncio.sleep(self.game_speed)
+                continue
+
             self.update_game()
             # invoke index.html's update_pong function
             eel.update_pong(
@@ -1322,6 +1333,8 @@ class PongGame:
     def start_game(self, head_to_head_stats):
         self.h2h_stats = head_to_head_stats
 
+        eel.expose(self.toggle_pause)
+
         def start_eel():
             eel.start(
                 "index.html",
@@ -1342,6 +1355,13 @@ class PongGame:
         logger.info("Closing the game window...")
         # print(self.metrics.compute_metrics(past_seconds=-1))
         os._exit(0)
+
+    def toggle_pause(self):
+        # toggle pause
+        self.paused = not self.paused
+        if self.paused:
+            self.commentary_manager.flush(no_filler=True)
+        self.last_commentary_time = time.time()
 
 
 if __name__ == "__main__":

@@ -381,5 +381,29 @@
         return true;
       }
     </script>
+    <div id="pausedOverlay" style="display: none">Paused</div>
+    <script>
+      let isPaused = false;
+      document.addEventListener("keydown", (e) => {
+        if (e.key.toLowerCase() === "p") {
+          eel.toggle_pause();
+          isPaused = !isPaused;
+          if (isPaused) {
+            const pausedOverlay = document.getElementById("pausedOverlay");
+            pausedOverlay.style.display = "block";
+            pausedOverlay.style.position = "absolute";
+            pausedOverlay.style.top = "50%";
+            pausedOverlay.style.left = "50%";
+            pausedOverlay.style.transform = "translate(-50%, -50%)";
+            pausedOverlay.style.color = "#fff";
+            pausedOverlay.style.fontSize = "48px";
+            pausedOverlay.style.fontFamily = "'Bebas Neue', sans-serif";
+          } else {
+            const pausedOverlay = document.getElementById("pausedOverlay");
+            pausedOverlay.style.display = "none";
+          }
+        }
+      });
+    </script>
   </body>
 </html>
