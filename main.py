@@ -1,21 +1,22 @@
 import ast
 import asyncio
 from datetime import datetime
-import pickle
-import random
+import io
+import logging
 import math
 import os
+import pickle
+import random
+import sys
 import time
 import threading
-import logging
-import sys
 
-import pandas as pd
-from scipy.stats import truncnorm
-from openai import OpenAI, AsyncOpenAI
-from openai.helpers import LocalAudioPlayer
 from dotenv import load_dotenv, find_dotenv
 import eel
+from openai import OpenAI, AsyncOpenAI
+from openai.helpers import LocalAudioPlayer
+import pandas as pd
+from scipy.stats import truncnorm
 
 env_file = find_dotenv(os.path.join(os.getcwd(), ".env"))
 load_dotenv(env_file)
@@ -55,6 +56,18 @@ class GPTPrompts:
         api_key = os.getenv("OPENAI_API_KEY")
         self.gpt_client = GPTClient(api_key)
         self.async_openai = AsyncOpenAI(api_key=api_key)
+
+        self.speech_instruction = (
+            ""
+            "Personality/affect: A high-energy sports commentator guiding users through administrative tasks.\n\n"
+            "Voice: Dynamic, passionate, and engaging, with an exhilarating and motivating quality.\n\n"
+            "Tone: Excited and enthusiastic, turning routine tasks into thrilling and high-stakes events.\n\n"
+            "Dialect: Informal, fast-paced, and energetic, using sports terminology, vibrant metaphors, and enthusiastic phrasing.\n\n"
+            "Pronunciation: Clear, powerful, and emphatic, emphasizing key actions and successes as if celebrating a game-winning moment.\n\n"
+            "Features: Incorporates vivid sports analogies, enthusiastic exclamations, "
+            "and rapid-fire commentary style to build excitement and maintain a lively pace throughout interactions.\n"
+            ""
+        )
 
     def generate_player_info(self):
         messages = [
@@ -323,27 +336,30 @@ class GPTPrompts:
         return ast.literal_eval(chat_response)
 
     async def speak(self, input, voice):
-        instructions = (
-            ""
-            "Personality/affect: A high-energy sports commentator guiding users through administrative tasks.\n\n"
-            "Voice: Dynamic, passionate, and engaging, with an exhilarating and motivating quality.\n\n"
-            "Tone: Excited and enthusiastic, turning routine tasks into thrilling and high-stakes events.\n\n"
-            "Dialect: Informal, fast-paced, and energetic, using sports terminology, vibrant metaphors, and enthusiastic phrasing.\n\n"
-            "Pronunciation: Clear, powerful, and emphatic, emphasizing key actions and successes as if celebrating a game-winning moment.\n\n"
-            "Features: Incorporates vivid sports analogies, enthusiastic exclamations, "
-            "and rapid-fire commentary style to build excitement and maintain a lively pace throughout interactions.\n"
-            ""
-        )
-
         async with self.async_openai.audio.speech.with_streaming_response.create(
             model="gpt-4o-mini-tts",
             voice=voice,
             input=input,
             speed=1.4,
-            instructions=instructions,
+            instructions=self.speech_instruction,
             response_format="pcm",
         ) as response:
             await LocalAudioPlayer().play(response)
+
+    async def fetch_audio(self, text: str, voice: str) -> bytes:
+        chunks = []
+        async with self.async_openai.audio.speech.with_streaming_response.create(
+            model="gpt-4o-mini-tts",
+            voice=voice,
+            input=text,
+            speed=2,
+            instructions=self.speech_instruction,
+            response_format="pcm",
+        ) as response:
+            async for chunk in response.iter_bytes(chunk_size=1024):
+                if chunk:
+                    chunks.append(chunk)
+        return b"".join(chunks)
 
     async def speak_in_game_commentary(self, commentary_script):
         voice = "ballad" if commentary_script["speaker"] == "Tony McCrae" else "coral"
@@ -353,9 +369,31 @@ class GPTPrompts:
         opening_script = self.generate_opening_script(head_to_head_stats)
         logger.info(f"The generated opening script is..... {opening_script}")
 
+        # synthesize all at once, and collect coroutines
+        fetch_tasks = []
         for line in opening_script:
             voice = "ballad" if line["speaker"] == "Tony McCrae" else "coral"
-            await self.speak(line["text"], voice)
+            fetch_tasks.append(self.fetch_audio(line["text"], voice))
+
+        # waiting for all pcm buffers
+        audio_buffers = await asyncio.gather(*fetch_tasks)
+
+        for buf in audio_buffers:
+            resp = InMemoryStreamResponse(buf)
+            await LocalAudioPlayer().play(resp)
+
+
+class InMemoryStreamResponse:
+    def __init__(self, pcm_bytes: bytes):
+        # uses in-memory bytes buffer
+        self.stream = io.BytesIO(pcm_bytes)
+
+    async def iter_bytes(self, chunk_size: int = 1024):
+        while True:
+            data = self.stream.read(chunk_size)
+            if not data:
+                break
+            yield data
 
 
 class CommentaryManager:
