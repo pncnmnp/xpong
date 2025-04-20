@@ -26,6 +26,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# How many points to win a game?
+GAME_POINT = 11
+
 
 class GPTClient:
     def __init__(self, api_key, model="gpt-4o-mini"):
@@ -97,7 +100,7 @@ class GPTPrompts:
                     "'speaker' (alternating strictly between 'Tony McCrae' and 'Nina Novak') and 'text' (the commentary). "
                     "Allow each speaker to speak multiple consecutive sentences in a single turn before switching to the other. "
                     "These are the official rules for Pong game:\n"
-                    "1. First player to 21 points wins immediately.\n"
+                    f"1. First player to {GAME_POINT} points wins immediately.\n"
                     "2. One point awarded per missed ball.\n"
                     "3. The player who loses the point serves next.\n"
                     "Never use markdown formatting or additional explanations in the JSON response."
@@ -167,19 +170,19 @@ class GPTPrompts:
         )
 
         l, r = base_metrics["left_score"], base_metrics["right_score"]
-        if l == r == 20:
+        if l == r == GAME_POINT - 1:
             match_stage = "Match Stage: Sudden-death — championship point either way; every heartbeat echoes in the hall."
-        elif l >= 20:
+        elif l >= GAME_POINT - 1:
             match_stage = f"Match Stage: Championship point for {base_metrics['left_player_name']} — one clean strike could end it."
-        elif r >= 20:
+        elif r >= GAME_POINT - 1:
             match_stage = f"Match Stage: Championship point for {base_metrics['right_player_name']} — a single winner seals the crown."
-        elif max(l, r) >= 15:
-            match_stage = f"Match Stage: Final quarter — tension thick, each rally feels worth two."
-        elif max(l, r) >= 10:
+        elif max(l, r) >= (GAME_POINT // 2 + GAME_POINT // 4):
+            match_stage = f"Match Stage: Final quarter — the finish line is in sight, tension thick, each rally feels worth two."
+        elif max(l, r) >= (GAME_POINT // 2):
             match_stage = (
                 "Match Stage: Midway battle — momentum teeters, nerves tighten."
             )
-        elif max(l, r) >= 5:
+        elif max(l, r) >= (GAME_POINT // 4):
             match_stage = (
                 "Match Stage: First quarter — early sparring for scoreboard control."
             )
@@ -187,6 +190,12 @@ class GPTPrompts:
             match_stage = (
                 "Match Stage: Opening exchanges — players probing for weaknesses."
             )
+        match_stage += (
+            "\nWhen the action shifts into a new phase, "
+            "explicitly weave that stage name (e.g., “mid-way stage”, “final quarter”) into your next line of commentary. "
+            "Use the commentary history to determine if the new phase has started."
+            " You do not need to mention the new phase, if the action is still in the same phase.\n"
+        )
 
         # Determine if hype is required
         long_rally = base_metrics["recent_rally"] and base_metrics["recent_rally"] >= 6
@@ -256,7 +265,7 @@ class GPTPrompts:
                     "Always keep the text under 200 characters, refer to players by first names only, and avoid excessive focus on shot and serve speeds unless highly significant. "
                     "**After a score change interruption**, smoothly pick up and continue the commentary based directly on the most recent statements from your co-commentator. Explicitly acknowledge or react briefly to what was previously mentioned, maintaining a cohesive, uninterrupted conversational flow."
                     "These are the official rules for Pong game:\n"
-                    "1. First player to 21 points wins immediately.\n"
+                    f"1. First player to {GAME_POINT} points wins immediately.\n"
                     "2. One point awarded per missed ball.\n"
                     "3. The player who loses the point serves next.\n"
                     "Never include markdown or explanations outside the JSON response. "
@@ -502,7 +511,7 @@ class GameStats:
                     self.player_elo[winner] += k_winner * (1 - p2_win_probability)
                     self.player_elo[loser] += k_loser * (0 - p1_win_probability)
 
-                winner_points = 21
+                winner_points = GAME_POINT
                 loser_points = random.randint(0, winner_points - 1)
 
                 self.game_stats.loc[len(self.game_stats)] = {
@@ -1019,6 +1028,7 @@ class PongGame:
         self.commentary_manager = CommentaryManager(self.gpt_prompts)
 
         self.paused = False
+        self.game_over = False
 
     def init_ball(self, direction):
         # If left side just lost, we serve on left side
@@ -1116,7 +1126,7 @@ class PongGame:
                 paddle["y"] -= paddle["speed"]
 
     def update_game(self):
-        if self.paused:
+        if self.paused or self.game_over:
             return
 
         if not self.ball_in_play:
@@ -1232,6 +1242,10 @@ class PongGame:
             self.ball_bounce_count = 0
             self.last_shot_player = None
             self.metrics.record_event(event_type="point_scored", player="R")
+            if self.right_score >= GAME_POINT:
+                self.game_over = True
+                asyncio.create_task(self.end_game(winner="R"))
+                return
             asyncio.create_task(self.reset_ball(direction=1))
             self.metrics.record_event(
                 event_type="serve_speed",
@@ -1252,6 +1266,10 @@ class PongGame:
             self.ball_bounce_count = 0
             self.last_shot_player = None
             self.metrics.record_event(event_type="point_scored", player="L")
+            if self.left_score >= GAME_POINT:
+                self.game_over = True
+                asyncio.create_task(self.end_game(winner="L"))
+                return
             asyncio.create_task(self.reset_ball(direction=-1))
             self.metrics.record_event(
                 event_type="serve_speed",
@@ -1304,7 +1322,7 @@ class PongGame:
             await self.gpt_prompts.speak_opening_script(self.h2h_stats)
 
         while True:
-            if self.paused:
+            if self.paused or self.game_over:
                 # minimal ticking
                 await asyncio.sleep(self.game_speed)
                 continue
@@ -1365,6 +1383,16 @@ class PongGame:
         logger.info("Closing the game window...")
         # print(self.metrics.compute_metrics(past_seconds=-1))
         os._exit(0)
+
+    async def end_game(self, winner: str):
+        self.paused = True
+        self.ball_in_play = False
+        self.commentary_manager.flush(no_filler=True)
+        # TODO: final commentary
+        logger.info(
+            f"Game Over! {winner} wins with score {self.left_score}:{self.right_score}"
+        )
+        self.close_window(None, None)
 
     def toggle_pause(self):
         # toggle pause
