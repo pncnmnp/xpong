@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 # How many points to win a game?
 GAME_POINT = 11
 
+# Debugging mode to speed up the game
+SPEEDUP = False
+XFPS = 1000 if SPEEDUP else 1
+NO_COMMENTARY = SPEEDUP
+
 
 class GPTClient:
     def __init__(self, api_key, model="gpt-4o-mini"):
@@ -1015,7 +1020,7 @@ class PongGame:
         self.right_last_shot_speed = None
 
         # Approximately 60 FPS
-        self.game_speed = 0.016
+        self.game_speed = 0.016 / XFPS
 
         self.ball_in_play = True
 
@@ -1055,7 +1060,8 @@ class PongGame:
         self.shot_velocity_y()
 
     async def reset_ball(self, direction=1):
-        await asyncio.sleep(8)
+        if not SPEEDUP:
+            await asyncio.sleep(8)
         self.init_ball(direction)
         self.ball_in_play = True
 
@@ -1283,6 +1289,9 @@ class PongGame:
             )
 
     async def generate_and_enqueue_commentary(self, score_change=False, scored_by=None):
+        if NO_COMMENTARY:
+            return
+
         base_metrics = await asyncio.to_thread(self.metrics.compute_metrics, -1)
 
         base_metrics["left_player_name"] = self.h2h_stats["player_name"]
