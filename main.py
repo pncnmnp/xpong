@@ -108,6 +108,24 @@ class GPTPrompts:
         return player_info
 
     def generate_opening_script(self, h2h):
+        tournament_fmt = (
+            lambda d: ", ".join(f"{n} '{t}' wins" for t, n in d.items() if n)
+            or "No Tournament Wins Yet"
+        )
+        (
+            player_tournament_wins,
+            opponent_tournament_wins,
+            player_tournament_runner_up,
+            opponent_tournament_runner_up,
+        ) = map(
+            tournament_fmt,
+            (
+                h2h["player_titles"],
+                h2h["opponent_titles"],
+                h2h["player_runner_up_titles"],
+                h2h["opponent_runner_up_titles"],
+            ),
+        )
         messages = [
             {
                 "role": "system",
@@ -117,6 +135,7 @@ class GPTPrompts:
                     "as an ordered list of turns. Each turn must be represented as an object with two keys: "
                     "'speaker' (alternating strictly between 'Tony McCrae' and 'Nina Novak') and 'text' (the commentary). "
                     "Allow each speaker to speak multiple consecutive sentences in a single turn before switching to the other. "
+                    "Always list each player's major-tournament wins in the opening commentary (if any)."
                     "These are the official rules for Pong game:\n"
                     f"1. First player to {GAME_POINT} points wins immediately.\n"
                     "2. One point awarded per missed ball.\n"
@@ -131,8 +150,10 @@ class GPTPrompts:
                     f"Player ID: {h2h['player_id']} vs Opponent ID: {h2h['opponent_id']}\n"
                     f"Player Names: {h2h['player_name']} vs {h2h['opponent_name']}\n"
                     f"Player Ranks: World Number {h2h['player_rank']} vs World Number {h2h['opponent_rank']}\n"
-                    f"Player World Cup Wins: {h2h['player_wc_wins']} vs {h2h['opponent_wc_wins']}\n"
-                    f"Player World Cup Runner-ups: {h2h['player_wc_runner_up']} vs {h2h['opponent_wc_runner_up']}\n"
+                    f"{h2h['player_name']}'s Tournament Wins: {player_tournament_wins}\n"
+                    f"{h2h['opponent_name']}'s Tournament Wins: {opponent_tournament_wins}\n"
+                    f"{h2h['player_name']}'s Tournament Runner-ups: {player_tournament_runner_up}\n"
+                    f"{h2h['opponent_name']}'s Tournament Runner-ups: {opponent_tournament_runner_up}\n"
                     f"Countries: {h2h['player_country']} vs {h2h['opponent_country']}\n"
                     f"Dates of Birth: {h2h['player_dob']} vs {h2h['opponent_dob']}\n"
                     f"Playing Styles: {h2h['player_style']} vs {h2h['opponent_style']}\n"
@@ -269,6 +290,17 @@ class GPTPrompts:
 
         color_flag = random.choices([0, 1], [0.7, 0.3])[0]
 
+        tournament_fmt = (
+            lambda d: ", ".join(
+                f"'{t}' tournament {n} times" for t, n in d.items() if n
+            )
+            or "no tournament wins yet"
+        )
+        left_tournament_wins, right_tournament_wins = map(
+            tournament_fmt,
+            (base_metrics["player_titles"], base_metrics["opponent_titles"]),
+        )
+
         messages = [
             {
                 "role": "system",
@@ -294,8 +326,8 @@ class GPTPrompts:
                 "role": "user",
                 "content": (
                     "This is a World Championship Final game."
-                    f"{base_metrics['left_player_name']} has previously won the world championship {base_metrics['left_player_wc_wins']} times and "
-                    f"{base_metrics['right_player_name']} has previously won the world championship {base_metrics['right_player_wc_wins']} times.\n"
+                    f"{base_metrics['left_player_name']} has previously won {left_tournament_wins}.\n"
+                    f"{base_metrics['right_player_name']} has previously won {right_tournament_wins}\n"
                     f"Base Metrics:\n\n"
                     f"{base_metrics['left_player_name']}'s score is: {base_metrics['left_score']}\n"
                     f"{base_metrics['right_player_name']}'s score is: {base_metrics['right_score']}\n\n"
@@ -441,21 +473,30 @@ class CommentaryManager:
 
 
 class GameStats:
-    def __init__(self):
+    def __init__(self, num_top_players):
         # Historical game statistics are stored in a dataFrame
         # stores information on the player id, opponent id, match id,
         # date, tournament_id, result, and game statistics.
         # The game statistics include the points scored by the player,
         # the points allowed by the player, the fastest ball speed,
         # and the number of aces
+        self.num_top_players = num_top_players
+        self.major_tournaments = [
+            ("Sovereign Cup", 2, 1, num_top_players // 2),
+            ("Grand Invitational", 5, 1, num_top_players // 4),
+            ("World Championship", 7, 1, num_top_players),
+            ("Dominion Open", 9, 1, num_top_players),
+        ]
         self.game_stats = pd.DataFrame(
             columns=[
                 "player_id",
                 "opponent_id",
                 "match_id",
                 "date",
+                "tournament_name",
                 "tournament_id",
                 "result",
+                "num_players_round",
                 "points_scored",
                 "points_allowed",
                 "fastest_ball_speed",
@@ -463,7 +504,14 @@ class GameStats:
             ]
         )
         self.tournament_stats = pd.DataFrame(
-            columns=["winner_id", "runner_up_id", "tournament_id", "match_id"]
+            columns=[
+                "winner_id",
+                "runner_up_id",
+                "tournament_id",
+                "tournament_name",
+                "tournament_year",
+                "match_id",
+            ]
         )
         self.player_elo = {}
         self.player_stats = pd.DataFrame(
@@ -488,12 +536,12 @@ class GameStats:
             ]
         )
 
-    def tournament_pairing(self, player_ids):
+    def tournament_pairing(self, player_ids, num_players):
         if len(player_ids) % 2 != 0:
             raise ValueError("Number of players in a tournament must be even.")
         players_by_rankings = sorted(
             player_ids, key=lambda x: self.player_elo[x], reverse=True
-        )
+        )[:num_players]
         half_len = len(players_by_rankings) // 2
         elite_tier = players_by_rankings[:half_len]
         challenger_tier = players_by_rankings[half_len:]
@@ -516,26 +564,38 @@ class GameStats:
         ball_speed = truncnorm.rvs(a, b, loc=mu, scale=sigma)
         return round(ball_speed, 1)
 
-    def simulate_tournament(self, player_ids, tournament_id, tournament_year):
+    def games_in_single_day(self, num_round_players, num_total_players):
+        return int(max(8 * (num_round_players / num_total_players), 1))
+
+    def simulate_tournament(
+        self, player_ids, tournament_details, tournament_id, tournament_year
+    ):
+        (tournament_name, month, date, num_players) = tournament_details
         tournament_pairings = [
-            player for pair in self.tournament_pairing(player_ids) for player in pair
+            player
+            for pair in self.tournament_pairing(player_ids, num_players)
+            for player in pair
         ]
         round_players = tournament_pairings[:]
         match_id_counter = 1
 
         # Tournament start date
-        match_date = datetime(tournament_year, 7, 1)
+        match_date = datetime(tournament_year, month, date)
 
         while len(round_players) > 1:
             next_round_players = []
             match_date += pd.DateOffset(days=1)
+            curr_round_num_players = len(round_players)
+            games_in_single_day = self.games_in_single_day(
+                curr_round_num_players, num_players
+            )
 
-            for i in range(0, len(round_players), 2):
+            for i in range(0, curr_round_num_players, 2):
                 player1, player2 = round_players[i], round_players[i + 1]
                 p1_rank, p2_rank = self.player_elo[player1], self.player_elo[player2]
                 rank_diff = p2_rank - p1_rank
 
-                if match_id_counter % 8 == 0:
+                if match_id_counter % games_in_single_day == 0:
                     match_date += pd.DateOffset(days=1)
 
                 p1_win_probability = 1 / (1 + 10 ** (rank_diff / 400))
@@ -562,8 +622,10 @@ class GameStats:
                     "opponent_id": loser,
                     "match_id": match_id_counter,
                     "date": match_date,
+                    "tournament_name": tournament_name,
                     "tournament_id": tournament_id,
                     "result": "W",
+                    "num_players_round": curr_round_num_players,
                     "points_scored": winner_points,
                     "points_allowed": loser_points,
                     "fastest_ball_speed": self.simulate_fastest_ball_speed(),
@@ -575,7 +637,9 @@ class GameStats:
                     "opponent_id": winner,
                     "match_id": match_id_counter,
                     "date": match_date,
+                    "tournament_name": tournament_name,
                     "tournament_id": tournament_id,
+                    "num_players_round": curr_round_num_players,
                     "result": "L",
                     "points_scored": loser_points,
                     "points_allowed": winner_points,
@@ -591,6 +655,8 @@ class GameStats:
                     "winner_id": next_round_players[0],
                     "runner_up_id": next_round_players[1],
                     "tournament_id": tournament_id,
+                    "tournament_name": tournament_name,
+                    "tournament_year": tournament_year,
                     "match_id": match_id_counter - 1,
                 }
             round_players = next_round_players
@@ -631,14 +697,25 @@ class GameStats:
             points_diff = round(avg_points_scored - avg_points_allowed, 2)
             fastest_ball_speed = player_stats["fastest_ball_speed"].max()
             avg_aces = round(player_stats["aces"].mean(), 2)
-            tournaments_won = len(
+
+            majors = [t[0] for t in self.major_tournaments]
+            tournaments_won = (
                 self.tournament_stats[self.tournament_stats["winner_id"] == player_id]
+                .groupby("tournament_name")
+                .size()
+                .reindex(majors, fill_value=0)
+                .to_dict()
             )
-            tournaments_runner_up = len(
+            tournaments_runner_up = (
                 self.tournament_stats[
                     self.tournament_stats["runner_up_id"] == player_id
                 ]
+                .groupby("tournament_name")
+                .size()
+                .reindex(majors, fill_value=0)
+                .to_dict()
             )
+
             win_streak, lose_streak = 0, 0
             max_win_streak, max_lose_streak = 0, 0
             for result in player_stats["result"]:
@@ -705,18 +782,18 @@ class GameStats:
             + 1
         )
 
-        player_wins = len(
-            self.tournament_stats[self.tournament_stats["winner_id"] == player_id]
-        )
-        opponent_wins = len(
-            self.tournament_stats[self.tournament_stats["winner_id"] == opponent_id]
-        )
-        player_runner_up = len(
-            self.tournament_stats[self.tournament_stats["runner_up_id"] == player_id]
-        )
-        opponent_runner_up = len(
-            self.tournament_stats[self.tournament_stats["runner_up_id"] == opponent_id]
-        )
+        player_titles = self.player_stats[self.player_stats["player_id"] == player_id][
+            "tournaments_won"
+        ].values[0]
+        opponent_titles = self.player_stats[
+            self.player_stats["player_id"] == opponent_id
+        ]["tournaments_won"].values[0]
+        player_runner_up_titles = self.player_stats[
+            self.player_stats["player_id"] == player_id
+        ]["tournaments_runner_up"].values[0]
+        opponent_runner_up_titles = self.player_stats[
+            self.player_stats["player_id"] == opponent_id
+        ]["tournaments_runner_up"].values[0]
 
         return {
             "player_id": player_id,
@@ -736,10 +813,10 @@ class GameStats:
             "head_to_head": ", ".join(head_to_head["result"].values),
             "player_rank": player_rank,
             "opponent_rank": opponent_rank,
-            "player_wc_wins": player_wins,
-            "opponent_wc_wins": opponent_wins,
-            "player_wc_runner_up": player_runner_up,
-            "opponent_wc_runner_up": opponent_runner_up,
+            "player_titles": player_titles,
+            "opponent_titles": opponent_titles,
+            "player_runner_up_titles": player_runner_up_titles,
+            "opponent_runner_up_titles": opponent_runner_up_titles,
         }
 
 
@@ -1334,11 +1411,13 @@ class PongGame:
 
         base_metrics["left_player_name"] = self.h2h_stats["player_name"]
         base_metrics["right_player_name"] = self.h2h_stats["opponent_name"]
-        base_metrics["left_player_wc_wins"] = self.h2h_stats["player_wc_wins"]
-        base_metrics["right_player_wc_wins"] = self.h2h_stats["opponent_wc_wins"]
-        base_metrics["left_player_wc_runner_up"] = self.h2h_stats["player_wc_runner_up"]
-        base_metrics["right_player_wc_runner_up"] = self.h2h_stats[
-            "opponent_wc_runner_up"
+        base_metrics["player_titles"] = self.h2h_stats["player_titles"]
+        base_metrics["opponent_titles"] = self.h2h_stats["opponent_titles"]
+        base_metrics["player_runner_up_titles"] = self.h2h_stats[
+            "player_runner_up_titles"
+        ]
+        base_metrics["opponent_runner_up_titles"] = self.h2h_stats[
+            "opponent_runner_up_titles"
         ]
         base_metrics["left_player_style"] = self.h2h_stats["player_style"]
         base_metrics["right_player_style"] = self.h2h_stats["opponent_style"]
@@ -1454,13 +1533,12 @@ if __name__ == "__main__":
     PLAYER_INFO_CACHE = "./assets/player_info.pkl"
 
     logger.info("Generating tournament data...")
-    simul = GameStats()
+    simul = GameStats(num_top_players=64)
     gpt_prompts = GPTPrompts()
-    num_players_per_tournament = 64
-    logger.info(f"{num_players_per_tournament} players in the tournament...")
+    logger.info(f"{simul.num_top_players} top players in the world...")
 
-    player_ids = list(range(1, num_players_per_tournament + 1))
-    player_rankings = list(range(1, num_players_per_tournament + 1))
+    player_ids = list(range(1, simul.num_top_players + 1))
+    player_rankings = list(range(1, simul.num_top_players + 1))
 
     if CACHE_ENABLED and os.path.exists(PLAYER_INFO_CACHE):
         logger.info("Loading player information from cache...")
@@ -1478,19 +1556,33 @@ if __name__ == "__main__":
     random.shuffle(player_rankings)
     simul.assign_init_elo(player_ids, player_rankings)
 
-    number_of_tournaments = 15
-    tournament_year = 2025 - number_of_tournaments
+    num_tournament_yrs = 15
+    tournament_year = 2025 - num_tournament_yrs
     logger.info(
-        f"Simulating {number_of_tournaments} tournaments starting with year {tournament_year}..."
+        f"Simulating {num_tournament_yrs} tournament years starting with year {tournament_year}..."
     )
-    for tournament_id in range(0, number_of_tournaments):
-        simul.simulate_tournament(player_ids, tournament_id, tournament_year)
+    for season in range(0, num_tournament_yrs):
+        for i, tournament in enumerate(simul.major_tournaments):
+            tournament_id = season + i + (3 * season)
+            simul.simulate_tournament(
+                player_ids, tournament, tournament_id, tournament_year
+            )
         tournament_year += 1
+    # At this moment, only game and tournament stats are simulated
+    logger.info(f"Storing historical games and tournament data.....")
+    simulation_dir = "./simulation"
+    os.makedirs(f"{simulation_dir}", exist_ok=True)
+    simul.game_stats.to_csv(f"{simulation_dir}/historical_games.csv", index=False)
+    simul.tournament_stats.to_csv(
+        f"{simulation_dir}/tournament_results.csv", index=False
+    )
 
     logger.info(f"Generate player statistics based on tournament data...")
     sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
     simul.player_statistics(player_ids, player_info)
-    simul.player_stats.to_csv("./player_stats.csv", index=False)
+    simul.player_stats.to_csv(f"{simulation_dir}/players.csv", index=False)
+
+    # simul.show_top_bottom_elo_stats(sorted_players)
 
     logger.info(f"Generate head-to-head statistics for the top 2 players...")
     head_to_head_stats = simul.head_to_head_statistics(

@@ -90,23 +90,63 @@
         columnsRow.appendChild(emptyHeader);
 
         function addRow(label, playerAValue, playerBValue) {
-          var row = document.createElement("tr");
+          if (
+            playerAValue &&
+            typeof playerAValue === "object" &&
+            !Array.isArray(playerAValue)
+          ) {
+            const heading = document.createElement("tr");
+            const headingCell = document.createElement("td");
+            headingCell.textContent = label;
+            headingCell.colSpan = playerBValue == null ? 2 : 3;
+            heading.appendChild(headingCell);
+            table.appendChild(heading);
 
-          var labelCell = document.createElement("td");
+            const keys = new Set([
+              ...Object.keys(playerAValue),
+              ...(playerBValue ? Object.keys(playerBValue) : []),
+            ]);
+
+            keys.forEach((title) => {
+              const row = document.createElement("tr");
+
+              const titleCell = document.createElement("td");
+              titleCell.textContent = title;
+              row.appendChild(titleCell);
+
+              const playerACell = document.createElement("td");
+              playerACell.textContent = playerAValue[title] ?? 0;
+              row.appendChild(playerACell);
+
+              if (playerBValue != null) {
+                const playerBCell = document.createElement("td");
+                playerBCell.textContent = playerBValue[title] ?? 0;
+                row.appendChild(playerBCell);
+              }
+
+              table.appendChild(row);
+            });
+
+            return;
+          }
+
+          const row = document.createElement("tr");
+
+          const labelCell = document.createElement("td");
           labelCell.textContent = label;
           row.appendChild(labelCell);
 
           if (playerBValue == null) {
-            var combinedCell = document.createElement("td");
+            const combinedCell = document.createElement("td");
             combinedCell.colSpan = 2;
             combinedCell.textContent = playerAValue;
             row.appendChild(combinedCell);
           } else {
-            var playerACell = document.createElement("td");
+            const playerACell = document.createElement("td");
             playerACell.textContent = playerAValue;
             row.appendChild(playerACell);
 
-            var playerBCell = document.createElement("td");
+            const playerBCell = document.createElement("td");
             playerBCell.textContent = playerBValue;
             row.appendChild(playerBCell);
           }
@@ -127,15 +167,11 @@
         addRow("Style", matchData.player_style, matchData.opponent_style);
         addRow("Rank", matchData.player_rank, matchData.opponent_rank);
         addRow(
-          "World Championships",
-          matchData.player_wc_wins,
-          matchData.opponent_wc_wins
+          "Major Titles",
+          matchData.player_titles,
+          matchData.opponent_titles
         );
-        addRow(
-          "Runners Up",
-          matchData.player_wc_runner_up,
-          matchData.opponent_wc_runner_up
-        );
+        addRow("Head-to-Head Record", {}, {});
         addRow("Total Games", matchData.total_games);
         addRow(
           "Win Rate",
@@ -143,7 +179,7 @@
           Math.round(100 - matchData.win_rate * 100) + "%"
         );
         addRow(
-          "Head-to-Head",
+          "Recent Form",
           Array.isArray(matchData.head_to_head)
             ? matchData.head_to_head.join(", ")
             : matchData.head_to_head
