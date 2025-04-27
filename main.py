@@ -751,11 +751,14 @@ class GameStats:
         player_elo_df = pd.DataFrame(
             sorted_players, columns=["Player ID", "ELO Rating"]
         )
-        print(player_elo_df.head(3))
-        print(player_elo_df.tail(3))
-        print(
-            "Delta is: ",
-            player_elo_df["ELO Rating"].max() - player_elo_df["ELO Rating"].min(),
+        logger.info(
+            f"\033[91mTop 3 players with highest ELO ratings are..... \n{player_elo_df.head(3)}\033[0m"
+        )
+        logger.info(
+            f"\033[91mBottom 3 players with lowest ELO ratings are..... \n{player_elo_df.tail(3)}\033[0m"
+        )
+        logger.info(
+            f"\033[91mDelta is..... {round(player_elo_df['ELO Rating'].max() - player_elo_df['ELO Rating'].min(), 2)}\033[0m"
         )
 
     def player_statistics(self, player_ids, player_info):
@@ -1659,6 +1662,9 @@ if __name__ == "__main__":
     sorted_players = sorted(simul.player_elo.items(), key=lambda x: x[1], reverse=True)
     simul.player_statistics(player_ids, player_info)
     simul.player_stats.to_csv(f"{simulation_dir}/players.csv", index=False)
+
+    logger.info(f"Top and bottom ELO statistics...")
+    simul.show_top_bottom_elo_stats(sorted_players)
 
     # simul.show_top_bottom_elo_stats(sorted_players)
 
