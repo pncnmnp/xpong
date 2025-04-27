@@ -13,10 +13,12 @@ import threading
 
 from dotenv import load_dotenv, find_dotenv
 import eel
+import numpy as np
 from openai import OpenAI, AsyncOpenAI
 from openai.helpers import LocalAudioPlayer
 import pandas as pd
 from scipy.stats import truncnorm
+from sklearn.neighbors import KDTree
 
 env_file = find_dotenv(os.path.join(os.getcwd(), ".env"))
 load_dotenv(env_file)
@@ -315,7 +317,7 @@ class GPTPrompts:
 
         legend_cue = ""
         legends_pool = self.all_time_greats_prompt
-        if legends_pool and random.random() < 0.33:
+        if legends_pool and random.random() < 0.1:
             chosen = random.choice(legends_pool)
             legend_cue = (
                 f"\nIn this commentary, make sure to weave in a flash comparison to a Pong all-time great "
@@ -337,6 +339,26 @@ class GPTPrompts:
             (base_metrics["player_titles"], base_metrics["opponent_titles"]),
         )
 
+        # TODO: Make this a one time only thing?
+        # Or have a diversity in the similar games,
+        # by deleting the ones already used
+        similar_game_prompt = ""
+        if isinstance(base_metrics["most_similar_game"], pd.DataFrame):
+            similar = base_metrics["most_similar_game"].iloc[0]
+            final_score = (
+                similar["match_progress"][-1] if similar["match_progress"] else ""
+            )
+            similar_game_prompt = (
+                "\nPRIORITY FLASHBACK: Pause routine commentary and deliver a "
+                "concise, high-energy comparison to the classic "
+                f"{similar['date']} {similar['tournament_name']} showdown "
+                f"(match ID {similar['match_id']}), where players "
+                f"{similar['player_id']} and {similar['opponent_id']} battled from the very "
+                f"same opening pattern to a {final_score} finish. "
+                "Explain—within <= 200 chars - why today's rally feels like deja vu, "
+                "then pivot straight back to live action.\n"
+            )
+
         messages = [
             {
                 "role": "system",
@@ -346,7 +368,7 @@ class GPTPrompts:
                     f"Provide a natural conversational flow by briefly acknowledging or reacting to what your co-commentator previously said. "
                     f"Base your commentary on the provided metrics and recent commentary history, and avoid repeating similar observations consecutively. "
                     f"{hype_prompt} {score_change_prompt} {extra_metrics_prompt} {non_repetition_prompt}"
-                    f"{legend_cue} "
+                    f"{similar_game_prompt}{legend_cue} "
                     f"The game is currently in the {match_stage}.\n"
                     f"If the color commentary flag is set to 1, provide creative meta-commentary about the game's strategy, player styles, or atmosphere, without relying heavily on numerical metrics. "
                     "Always keep the text under 200 characters, refer to players by first names only, and avoid excessive focus on shot and serve speeds unless highly significant. "
@@ -903,8 +925,50 @@ class GameStats:
 
 
 class MetricsCollector:
-    def __init__(self):
+    def __init__(self, historical_games):
         self.events = []
+        self.match_progress = []
+        self.historical_games = historical_games
+        self.hist_tree = self.build_tree_of_pong(historical_games)
+        self.most_similar_game = None
+
+    @staticmethod
+    def scores_to_vec(scores, k):
+        arr = np.full((k, 2), -1, dtype=np.int8)
+        for i, s in enumerate(scores[:k]):
+            l, r = map(int, s.split(":"))
+            arr[i] = (l, r)
+        return arr.ravel()
+
+    def build_tree_of_pong(self, historical_games):
+        logger.info("Indexing historical games.....")
+        match_progress = historical_games["match_progress"].map(
+            lambda x: self.scores_to_vec(x, GAME_POINT)
+        )
+        prefix_vectors = np.vstack(match_progress)
+        return KDTree(prefix_vectors, metric="manhattan")
+
+    def most_similar(self):
+        if len(self.match_progress) == 0:
+            return
+
+        left, right = [int(x) for x in self.match_progress[-1].split(":")]
+        if (
+            max(left, right) <= GAME_POINT // 2
+            or len(self.match_progress) < GAME_POINT // 1.5
+        ):
+            logger.info(
+                "\033[91mNo similar game found, as the game is still in the early stages.\033[0m"
+            )
+            return
+
+        query_vec = self.scores_to_vec(self.match_progress, GAME_POINT)
+        dist, ind = self.hist_tree.query(query_vec.reshape(1, -1), k=1)
+        row_ids = self.historical_games.index.to_numpy()
+        similar_game = self.historical_games.iloc[row_ids[ind[0]]].assign(
+            similarity=dist[0]
+        )
+        self.most_similar_game = similar_game
 
     def record_event(self, event_type, player=None, data=None):
         # Record the event with a timestamp
@@ -922,6 +986,9 @@ class MetricsCollector:
             "data": data,
             "timestamp": time.time(),
         }
+        # Special case: we use this data to dig into the historical games
+        if event_type == "point_scored":
+            self.match_progress.append(data)
         # logger.info(f"Event recorded: {event}")
         self.events.append(event)
 
@@ -1091,6 +1158,17 @@ class MetricsCollector:
         events = self.get_recent_events(past_seconds)
         left_score, right_score = self.get_score_metrics()
 
+        most_similar_game = None
+        if random.random() < 0.33:
+            self.most_similar()
+            # It is better to do this,
+            # so that we do not have to distribute probability calls during commentary generation
+            # This is to prevent a probability cascade in here and in the commentary gen code
+            # For example, if this prob is 0.5, and the commentary gen prob is 0.5,
+            # then we are looking at 0.25 chance of getting a historical commentary in
+            # But it is better to tune this number right here
+            most_similar_game = self.most_similar_game
+
         left_shot_speeds, right_shot_speeds = self.get_shot_speed_events(events)
         left_shot_speeds = self.convert_to_scalar_speed(left_shot_speeds)
         right_shot_speeds = self.convert_to_scalar_speed(right_shot_speeds)
@@ -1169,12 +1247,13 @@ class MetricsCollector:
             "avg_right_shot_angle": avg_right_shot_angle,
             "avg_left_paddle_movement": avg_left_paddle_movement,
             "avg_right_paddle_movement": avg_right_paddle_movement,
+            "most_similar_game": most_similar_game,
         }
 
 
 class PongGame:
-    def __init__(self, all_time_greats):
-        self.metrics = MetricsCollector()
+    def __init__(self, all_time_greats, historical_games):
+        self.metrics = MetricsCollector(historical_games)
 
         self.width = 800
         self.height = 600
@@ -1444,7 +1523,10 @@ class PongGame:
             self.rally_count = 1  # to account for the serve
             self.ball_bounce_count = 0
             self.last_shot_player = None
-            self.metrics.record_event(event_type="point_scored", player="R")
+            match_progress = f"{self.left_score}:{self.right_score}"
+            self.metrics.record_event(
+                event_type="point_scored", player="R", data=match_progress
+            )
             if self.right_score >= GAME_POINT:
                 self.game_over = True
                 asyncio.create_task(self.end_game(winner="R"))
@@ -1468,7 +1550,10 @@ class PongGame:
             self.rally_count = 1
             self.ball_bounce_count = 0
             self.last_shot_player = None
-            self.metrics.record_event(event_type="point_scored", player="L")
+            match_progress = f"{self.left_score}:{self.right_score}"
+            self.metrics.record_event(
+                event_type="point_scored", player="L", data=match_progress
+            )
             if self.left_score >= GAME_POINT:
                 self.game_over = True
                 asyncio.create_task(self.end_game(winner="L"))
@@ -1675,4 +1760,4 @@ if __name__ == "__main__":
     simul.get_all_time_greats()
 
     logger.info("Starting Pong Game...")
-    PongGame(simul.all_time_greats).start_game(head_to_head_stats)
+    PongGame(simul.all_time_greats, simul.game_stats).start_game(head_to_head_stats)
