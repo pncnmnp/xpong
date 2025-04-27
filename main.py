@@ -52,10 +52,13 @@ class GPTClient:
 
 
 class GPTPrompts:
-    def __init__(self):
+    def __init__(self, all_time_greats=None):
         api_key = os.getenv("OPENAI_API_KEY")
         self.gpt_client = GPTClient(api_key)
         self.async_openai = AsyncOpenAI(api_key=api_key)
+        self.all_time_greats_prompt = ""
+        if isinstance(all_time_greats, pd.DataFrame):
+            self.all_time_greats_prompt = self.generate_all_time_greats(all_time_greats)
 
         self.speech_instruction = (
             ""
@@ -68,6 +71,24 @@ class GPTPrompts:
             "and rapid-fire commentary style to build excitement and maintain a lively pace throughout interactions.\n"
             ""
         )
+
+    def generate_all_time_greats(self, df: pd.DataFrame):
+        legends = []
+        for _, row in df.head(5).iterrows():
+            legends.append(
+                {
+                    "name": row["name"],
+                    "nickname": row["nickname"],
+                    "signature_style": row["style"],
+                    "career_majors": row["career_majors"],
+                    "peak_rating": row["pwr"],
+                    "tagline": (
+                        f"{row['nickname']} - a {row['style']} maestro with "
+                        f"{row['career_majors']} career majors (peak PWR {row['pwr']})."
+                    ),
+                }
+            )
+        return legends
 
     def generate_player_info(self):
         messages = [
@@ -83,11 +104,12 @@ class GPTPrompts:
                 "role": "user",
                 "content": (
                     "Generate exactly 64 rows of fictional person data. "
-                    "Each row should be a JSON array (not an object) containing exactly 4 values: "
-                    "[autoincremented_id, full_name, country_code, date_of_birth]. "
+                    "Each row should be a JSON array (not an object) containing exactly 5 values: "
+                    "[autoincremented_id, full_name, nick_name, country_code, date_of_birth]. "
                     "The date of birth should be a string in 'YYYY-MM-DD' format, "
                     "and ages should be between 18 and 40 as of the year 2025. "
                     "Ensure names are culturally consistent with their country. "
+                    "Ensure the nicknames have a sporty and fun tone, e.g., 'The Ace', 'Big O', etc. "
                     "The country codes should always be 2-letter ISO country codes. "
                     "Not all countries need to be represented; it's okay if some repeat. "
                     "Return only a single raw JSON array of arrays. "
@@ -99,9 +121,10 @@ class GPTPrompts:
         chat_response = ast.literal_eval(chat_response)
         player_info = {}
         for player in chat_response:
-            player_id, full_name, country, dob = player
+            player_id, full_name, nick_name, country, dob = player
             player_info[player_id] = {
                 "full_name": full_name,
+                "nick_name": nick_name,
                 "country": country,
                 "dob": dob,
             }
@@ -290,6 +313,19 @@ class GPTPrompts:
 
         color_flag = random.choices([0, 1], [0.7, 0.3])[0]
 
+        legend_cue = ""
+        legends_pool = self.all_time_greats_prompt
+        if legends_pool and random.random() < 0.33:
+            chosen = random.choice(legends_pool)
+            legend_cue = (
+                f"\nIn this commentary, make sure to weave in a flash comparison to a Pong all-time great "
+                f"{chosen['nickname']} ({chosen['name']}) - {chosen['tagline']} "
+                "Keep it to a single, punchy sentence.\n"
+                "Remember to label him as a legendary and all-time great player, "
+                "his career highlights include:\n"
+                f"{chosen}\n"
+            )
+
         tournament_fmt = (
             lambda d: ", ".join(
                 f"'{t}' tournament {n} times" for t, n in d.items() if n
@@ -310,6 +346,7 @@ class GPTPrompts:
                     f"Provide a natural conversational flow by briefly acknowledging or reacting to what your co-commentator previously said. "
                     f"Base your commentary on the provided metrics and recent commentary history, and avoid repeating similar observations consecutively. "
                     f"{hype_prompt} {score_change_prompt} {extra_metrics_prompt} {non_repetition_prompt}"
+                    f"{legend_cue} "
                     f"The game is currently in the {match_stage}.\n"
                     f"If the color commentary flag is set to 1, provide creative meta-commentary about the game's strategy, player styles, or atmosphere, without relying heavily on numerical metrics. "
                     "Always keep the text under 200 characters, refer to players by first names only, and avoid excessive focus on shot and serve speeds unless highly significant. "
@@ -496,6 +533,7 @@ class GameStats:
                 "tournament_name",
                 "tournament_id",
                 "result",
+                "match_progress",
                 "num_players_round",
                 "points_scored",
                 "points_allowed",
@@ -518,6 +556,7 @@ class GameStats:
             columns=[
                 "player_id",
                 "name",
+                "nickname",
                 "country",
                 "dob",
                 "style",
@@ -535,6 +574,25 @@ class GameStats:
                 "tournaments_runner_up",
             ]
         )
+        self.all_time_greats = None
+
+    def get_all_time_greats(self):
+        # PWR=win_rate×log10​(1+total_games)
+        # PWR stands for Power Rating
+        self.player_stats["pwr"] = self.player_stats["win_rate"] * (
+            self.player_stats["total_games"].apply(lambda x: math.log10(1 + x))
+        )
+
+        # most major tournaments won
+        self.player_stats["career_majors"] = self.player_stats["tournaments_won"].apply(
+            lambda x: sum([count for _, count in x.items()])
+        )
+
+        # GOATs are the players with the most major tournaments won
+        # and in case of a tie, the player with the highest PWR
+        self.all_time_greats = self.player_stats.sort_values(
+            by=["career_majors", "pwr"], ascending=[False, False]
+        ).head(self.num_top_players // 8)
 
     def tournament_pairing(self, player_ids, num_players):
         if len(player_ids) % 2 != 0:
@@ -566,6 +624,21 @@ class GameStats:
 
     def games_in_single_day(self, num_round_players, num_total_players):
         return int(max(8 * (num_round_players / num_total_players), 1))
+
+    def simulate_game(self, winner_points, loser_points):
+        # There are probably many ways to do this
+        # This is the simplest I could think of
+        points = ["W"] * winner_points + ["L"] * loser_points
+        random.shuffle(points)
+        point_by_point = []
+        current_score = {"W": 0, "L": 0}
+        for point in points:
+            current_score[point] += 1
+            point_by_point.append(f"{current_score['W']}:{current_score['L']}")
+        return point_by_point
+
+    def get_loser_points(self, prob):
+        return max(0, min(10, int(random.gauss(10 * (1 - abs(2 * prob - 1)), 1))))
 
     def simulate_tournament(
         self, player_ids, tournament_details, tournament_id, tournament_year
@@ -607,15 +680,17 @@ class GameStats:
                     k_loser = max(32, 32 - 0.04 * (p2_rank - 2000))
                     self.player_elo[winner] += k_winner * (1 - p1_win_probability)
                     self.player_elo[loser] += k_loser * (0 - p2_win_probability)
+                    loser_points = self.get_loser_points(p2_win_probability)
                 else:
                     winner, loser = player2, player1
                     k_winner = max(1, 32 - 0.04 * (p2_rank - 2000))
                     k_loser = max(32, 32 - 0.04 * (p1_rank - 2000))
                     self.player_elo[winner] += k_winner * (1 - p2_win_probability)
                     self.player_elo[loser] += k_loser * (0 - p1_win_probability)
+                    loser_points = self.get_loser_points(p2_win_probability)
 
                 winner_points = GAME_POINT
-                loser_points = random.randint(0, winner_points - 1)
+                match_progress = self.simulate_game(winner_points, loser_points)
 
                 self.game_stats.loc[len(self.game_stats)] = {
                     "player_id": winner,
@@ -625,6 +700,7 @@ class GameStats:
                     "tournament_name": tournament_name,
                     "tournament_id": tournament_id,
                     "result": "W",
+                    "match_progress": match_progress,
                     "num_players_round": curr_round_num_players,
                     "points_scored": winner_points,
                     "points_allowed": loser_points,
@@ -641,6 +717,7 @@ class GameStats:
                     "tournament_id": tournament_id,
                     "num_players_round": curr_round_num_players,
                     "result": "L",
+                    "match_progress": match_progress,
                     "points_scored": loser_points,
                     "points_allowed": winner_points,
                     "fastest_ball_speed": self.simulate_fastest_ball_speed(),
@@ -684,6 +761,7 @@ class GameStats:
     def player_statistics(self, player_ids, player_info):
         for player_id in player_ids:
             name = player_info[player_id]["full_name"]
+            nickname = player_info[player_id]["nick_name"]
             country = player_info[player_id]["country"]
             dob = player_info[player_id]["dob"]
             style = "Right Hand" if random.random() > 0.3 else "Left Hand"
@@ -730,6 +808,7 @@ class GameStats:
             self.player_stats.loc[len(self.player_stats)] = [
                 player_id,
                 name,
+                nickname,
                 country,
                 dob,
                 style,
@@ -1091,7 +1170,7 @@ class MetricsCollector:
 
 
 class PongGame:
-    def __init__(self):
+    def __init__(self, all_time_greats):
         self.metrics = MetricsCollector()
 
         self.width = 800
@@ -1141,7 +1220,7 @@ class PongGame:
 
         eel.init("./web")
 
-        self.gpt_prompts = GPTPrompts()
+        self.gpt_prompts = GPTPrompts(all_time_greats)
         self.h2h_stats = None
         self.last_commentary_time = None
         self.last_metrics_snapshot = None
@@ -1547,10 +1626,9 @@ if __name__ == "__main__":
     else:
         logger.info("Generating player information from GPT...")
         player_info = gpt_prompts.generate_player_info()
-        if CACHE_ENABLED:
-            logger.info("Caching player information...")
-            with open(PLAYER_INFO_CACHE, "wb") as f:
-                pickle.dump(player_info, f)
+        logger.info("Caching player information...")
+        with open(PLAYER_INFO_CACHE, "wb") as f:
+            pickle.dump(player_info, f)
 
     logger.info("Shuffle player rankings and assign ELO ratings...")
     random.shuffle(player_rankings)
@@ -1589,5 +1667,8 @@ if __name__ == "__main__":
         sorted_players[0][0], sorted_players[1][0]
     )
 
-    logger.info("Starting Pong Game...")
-    PongGame().start_game(head_to_head_stats)
+    logger.info(f"Fetching all-time greats...")
+    simul.get_all_time_greats()
+
+    # logger.info("Starting Pong Game...")
+    PongGame(simul.all_time_greats).start_game(head_to_head_stats)
