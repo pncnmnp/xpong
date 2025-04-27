@@ -318,6 +318,7 @@ class GPTPrompts:
         legend_cue = ""
         legends_pool = self.all_time_greats_prompt
         if legends_pool and random.random() < 0.1:
+            logger.info("\033[93mGOAT cue triggered\033[0m")
             chosen = random.choice(legends_pool)
             legend_cue = (
                 f"\nIn this commentary, make sure to weave in a flash comparison to a Pong all-time great "
@@ -344,6 +345,7 @@ class GPTPrompts:
         # by deleting the ones already used
         similar_game_prompt = ""
         if isinstance(base_metrics["most_similar_game"], pd.DataFrame):
+            logger.info("\033[93mHistorical game cue triggered\033[0m")
             similar = base_metrics["most_similar_game"].iloc[0]
             final_score = (
                 similar["match_progress"][-1] if similar["match_progress"] else ""
@@ -359,6 +361,17 @@ class GPTPrompts:
                 "then pivot straight back to live action.\n"
             )
 
+        gossip_cue = ""
+        if not (legend_cue or similar_game_prompt) and random.random() < 0.1:
+            logger.info("\033[93mGossip cue triggered\033[0m")
+            gossip_cue = (
+                "\nSIDELINE BUZZ (MANDATORY): Craft a <=180-char rumour that fuses what's "
+                "happening right now (fatigue signs, gear tweaks, mini-streaks, etc.) with a "
+                "plausible locker-room whisper overheard pre-match. **You MUST reference this "
+                "rumour explicitly in the next commentary snippet** before pivoting back to live "
+                "play.\n"
+            )
+
         messages = [
             {
                 "role": "system",
@@ -368,7 +381,7 @@ class GPTPrompts:
                     f"Provide a natural conversational flow by briefly acknowledging or reacting to what your co-commentator previously said. "
                     f"Base your commentary on the provided metrics and recent commentary history, and avoid repeating similar observations consecutively. "
                     f"{hype_prompt} {score_change_prompt} {extra_metrics_prompt} {non_repetition_prompt}"
-                    f"{similar_game_prompt}{legend_cue} "
+                    f"{similar_game_prompt}{legend_cue}{gossip_cue} "
                     f"The game is currently in the {match_stage}.\n"
                     f"If the color commentary flag is set to 1, provide creative meta-commentary about the game's strategy, player styles, or atmosphere, without relying heavily on numerical metrics. "
                     "Always keep the text under 200 characters, refer to players by first names only, and avoid excessive focus on shot and serve speeds unless highly significant. "
