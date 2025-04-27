@@ -1666,8 +1666,6 @@ if __name__ == "__main__":
     logger.info(f"Top and bottom ELO statistics...")
     simul.show_top_bottom_elo_stats(sorted_players)
 
-    # simul.show_top_bottom_elo_stats(sorted_players)
-
     logger.info(f"Generate head-to-head statistics for the top 2 players...")
     head_to_head_stats = simul.head_to_head_statistics(
         sorted_players[0][0], sorted_players[1][0]
@@ -1676,5 +1674,5 @@ if __name__ == "__main__":
     logger.info(f"Fetching all-time greats...")
     simul.get_all_time_greats()
 
-    # logger.info("Starting Pong Game...")
+    logger.info("Starting Pong Game...")
     PongGame(simul.all_time_greats).start_game(head_to_head_stats)
