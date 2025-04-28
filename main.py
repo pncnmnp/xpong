@@ -439,6 +439,35 @@ class GPTPrompts:
         )
         return ast.literal_eval(chat_response)
 
+    def generate_final_commentary(self, winner_name, loser_name, final_stats):
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a sports-commentary assistant.  Respond ONLY with a raw JSON "
+                    "array of objects, each with keys 'speaker' and 'text', alternating "
+                    "between 'Tony McCrae' and 'Nina Novak'.  No markdown, no code fences."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"The match is over.  Winner: {winner_name}.  Runner-up: {loser_name}.\n"
+                    f"Final score {final_stats['left_score']}-{final_stats['right_score']}.\n"
+                    f"Longest rally: {final_stats['average_rally']:.0f}+ shots.\n"
+                    f"Fastest shot-speed today ~ {max(filter(None, [final_stats['left_shot_speed_avg'], final_stats['right_shot_speed_avg']]))} mph.\n"
+                    f"Maximum consecutive point won today: L = {final_stats.get('left_max_streak',0)}, R = {final_stats.get('right_max_streak',0)}.\n\n"
+                    "* Must open with the line: "
+                    f"{winner_name} - Du bist Weltmeister!! You are the world champion!!\n"
+                    "* Work in a 2-sentence journey recap (tournament run, key semis).\n"
+                    "* Mention two quick stats from the list above - no raw numbers beyond those.\n"
+                    "* Close with a joint sign-off, last line by Nina: 'We'll see you next season, adios!'."
+                ),
+            },
+        ]
+        logger.info(f"Generating final commentary for messages..... {messages}")
+        return ast.literal_eval(self.gpt_client.chat(messages))
+
     async def speak(self, input, voice):
         async with self.async_openai.audio.speech.with_streaming_response.create(
             model="gpt-4o-mini-tts",
@@ -471,7 +500,9 @@ class GPTPrompts:
 
     async def speak_opening_script(self, head_to_head_stats):
         opening_script = self.generate_opening_script(head_to_head_stats)
-        logger.info(f"The generated opening script is..... {opening_script}")
+        logger.info(
+            f"\033[91The generated opening script is..... {opening_script}\033[0m"
+        )
 
         # synthesize all at once, and collect coroutines
         fetch_tasks = []
@@ -482,6 +513,21 @@ class GPTPrompts:
         # waiting for all pcm buffers
         audio_buffers = await asyncio.gather(*fetch_tasks)
 
+        for buf in audio_buffers:
+            resp = InMemoryStreamResponse(buf)
+            await LocalAudioPlayer().play(resp)
+
+    async def speak_final_commentary(self, winner_name, loser_name, final_stats):
+        final_script = self.generate_final_commentary(
+            winner_name, loser_name, final_stats
+        )
+        logger.info(f"\033[91mThe generated final script is..... {final_script}\033[0m")
+
+        fetch_tasks = []
+        for line in final_script:
+            voice = "ballad" if line["speaker"] == "Tony McCrae" else "coral"
+            fetch_tasks.append(self.fetch_audio(line["text"], voice))
+        audio_buffers = await asyncio.gather(*fetch_tasks)
         for buf in audio_buffers:
             resp = InMemoryStreamResponse(buf)
             await LocalAudioPlayer().play(resp)
@@ -1542,7 +1588,7 @@ class PongGame:
             )
             if self.right_score >= GAME_POINT:
                 self.game_over = True
-                asyncio.create_task(self.end_game(winner="R"))
+                asyncio.create_task(self.end_game())
                 return
             asyncio.create_task(self.reset_ball(direction=1))
             self.metrics.record_event(
@@ -1569,7 +1615,7 @@ class PongGame:
             )
             if self.left_score >= GAME_POINT:
                 self.game_over = True
-                asyncio.create_task(self.end_game(winner="L"))
+                asyncio.create_task(self.end_game())
                 return
             asyncio.create_task(self.reset_ball(direction=-1))
             self.metrics.record_event(
@@ -1690,11 +1736,30 @@ class PongGame:
         # print(self.metrics.compute_metrics(past_seconds=-1))
         os._exit(0)
 
-    async def end_game(self, winner: str):
+    def get_final_stats(self):
+        if self.left_score == GAME_POINT:
+            winner = self.h2h_stats["player_name"]
+            loser = self.h2h_stats["opponent_name"]
+        else:
+            winner = self.h2h_stats["opponent_name"]
+            loser = self.h2h_stats["player_name"]
+        all_metrics = self.metrics.compute_metrics(past_seconds=-1)
+        final_metrics = {}
+        for key in all_metrics:
+            # we do not want to show any recent metrics
+            if "recent" not in key:
+                final_metrics[key] = all_metrics[key]
+        return (winner, loser, final_metrics)
+
+    async def end_game(self):
         self.paused = True
         self.ball_in_play = False
         self.commentary_manager.flush(no_filler=True)
-        # TODO: final commentary
+
+        logger.info(f"Start the closing commentary script...")
+        winner, loser, final_metrics = self.get_final_stats()
+        await self.gpt_prompts.speak_final_commentary(winner, loser, final_metrics)
+
         logger.info(
             f"Game Over! {winner} wins with score {self.left_score}:{self.right_score}"
         )
