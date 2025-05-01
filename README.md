@@ -48,6 +48,7 @@ It’s packed with ideas!
 
 * There’s a tournament simulator that simulates 15 years' worth of tournaments. Each year includes four majors — sixty events in all. Players and matches are simulated using **Elo**.
 * In the **16th year**, when the main match starts, the world’s top two players face off in the World Championship Final.
+* Two AIs are playing against each other in a game of Pong, with variations in their reaction times and shot speeds.
 * The commentary logic has **three layers** - opening commentary with a scorecard, in-game ball-by-ball commentary, and closing commentary.
 * Two commentators take turns talking to each other and the audience.
 * Commentary is interrupted when an important in-game event occurs, then resumes from where it left off afterward.
@@ -58,7 +59,7 @@ It’s packed with ideas!
 
 ## License and acknowledgements
 
-This code is licensed under **the MIT License**.
+This code is licensed under the [MIT License](./LICENSE).
 
 The paddle-hitting sound was generated using SoundReality's ["Tennis Ball Hit"](https://pixabay.com/sound-effects/tennis-ball-hit-151257/) sound.  
 It is licensed under Pixabay's ["Content License"](https://pixabay.com/service/license-summary/).
