@@ -17,6 +17,8 @@ Hope you have a blast tinkering with this game and its source code!
 
 ## Demo
 
+[![Screenshot 2025-05-01 at 23-22-12 (1722) We taught an AI to commentate Pong in Real Time - YouTube](https://github.com/user-attachments/assets/00630705-d5e3-48e4-8137-69be10faca4e)](https://www.youtube.com/watch?v=i21wN6CDsE0)
+
 ## Installation
 
 Before installing the dependencies, I encourage you to [create and activate a virtual environment](https://docs.python.org/3/library/venv.html) - for example, run `python3 -m venv .venv` and then `source .venv/bin/activate` on macos/linux.
