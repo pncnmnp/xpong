@@ -10,7 +10,7 @@ That’s five years!
 Anyway, for the longest time we never had the right technology to pull this off in a cost-effective, near-realtime manner.
 
 However, late last month, with <a href="https://news.ycombinator.com/item?id=43426022">OpenAI’s `gpt-4o-mini-tts`</a>, we finally have the resources to do it! 
-I envision a future where `gpt-4o-mini-tts`-like software is integrated on the edge — that is, edge LLMs. 
+I envision a future where `gpt-4o-mini-tts`-like software is integrated on the edge. 
 When that happens, next-generation gaming consoles will leverage such technology, opening up a whole universe of possibilities in gaming, especially in sports-simulation titles.
 
 Hope you have a blast tinkering with this game and its source code!
